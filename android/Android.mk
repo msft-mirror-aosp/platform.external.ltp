@@ -30,6 +30,9 @@ LOCAL_MODULE_CLASS := NATIVE_TESTS
 LOCAL_MULTILIB := both
 LOCAL_TEST_DATA := $(call find-test-data-in-subdirs,external/ltp,"*",runtest)
 
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-Apache-2.0 SPDX-license-identifier-GPL-2.0
+LOCAL_LICENSE_CONDITIONS := notice restricted
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
 include $(LOCAL_PATH)/ltp_package_list.mk
 LOCAL_REQUIRED_MODULES := $(ltp_packages)
 ltp_packages :=
