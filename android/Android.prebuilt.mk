@@ -24,6 +24,9 @@ LOCAL_MODULE_RELATIVE_PATH := ltp/$(module_path)
 LOCAL_MODULE_CLASS := NATIVE_TESTS
 LOCAL_MULTILIB := both
 
+LOCAL_LICENSE_KINDS := SPDX-license-identifier-Apache-2.0 SPDX-license-identifier-GPL-2.0
+LOCAL_LICENSE_CONDITIONS := notice restricted
+LOCAL_NOTICE_FILE := $(LOCAL_PATH)/../COPYING $(LOCAL_PATH)/../NOTICE
 include $(BUILD_PREBUILT)
 
 module_name :=
