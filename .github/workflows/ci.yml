@@ -93,21 +93,16 @@ jobs:
               CC: clang
               METADATA: asciidoctor-pdf
 
-          - container: "ubuntu:impish"
+          - container: "ubuntu:jammy"
             env:
               CC: gcc
               METADATA: asciidoctor
               TREE: out
 
-          - container: "ubuntu:xenial"
+          - container: "ubuntu:bionic"
             env:
               CC: gcc
               METADATA: asciidoc-pdf
-
-          - container: "centos:latest"
-            env:
-              CC: gcc
-              METADATA: asciidoctor
 
     container:
       image: ${{ matrix.container }}

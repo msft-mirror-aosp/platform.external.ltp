@@ -11,10 +11,6 @@
 MEMCG_TESTFUNC=test
 MEMCG_SHMMAX=1
 TST_TEST_DATA="--mmap-anon --mmap-file --shm"
-. memcg_lib.sh
-
-MEMORY_LIMIT=$PAGESIZE
-MEMORY_TO_ALLOCATE=$((MEMORY_LIMIT * 2))
 
 test()
 {
@@ -35,5 +31,10 @@ test()
 		tst_res TFAIL "memory.failcnt is $failcnt, <= 0 expected"
 	fi
 }
+
+. memcg_lib.sh
+
+MEMORY_LIMIT=$PAGESIZE
+MEMORY_TO_ALLOCATE=$((MEMORY_LIMIT * 2))
 
 tst_run

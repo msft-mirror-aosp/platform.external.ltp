@@ -26,7 +26,7 @@
 #include "tst_test.h"
 #include "common.h"
 
-static int *run_child;
+static volatile int *run_child;
 
 static char *str_numchildren;
 static char *str_writesize;
@@ -51,6 +51,10 @@ static void dio_sparse(int fd, int align, long long fs, int ws, long long off)
 	SAFE_LSEEK(fd, off, SEEK_SET);
 
 	for (i = off; i < fs;) {
+		if (!tst_remaining_runtime()) {
+			tst_res(TINFO, "Test runtime is over, exiting");
+			return;
+		}
 		w = SAFE_WRITE(0, fd, bufptr, ws);
 		i += w;
 	}
@@ -85,14 +89,13 @@ static void cleanup(void)
 {
 	if (run_child) {
 		*run_child = 0;
-		SAFE_MUNMAP(run_child, sizeof(int));
+		SAFE_MUNMAP((void *)run_child, sizeof(int));
 	}
 }
 
 static void run(void)
 {
 	char *filename = "dio_sparse";
-	int status;
 	int fd;
 	int i;
 
@@ -109,13 +112,10 @@ static void run(void)
 	}
 
 	dio_sparse(fd, alignment, filesize, writesize, offset);
-
-	if (SAFE_WAITPID(-1, &status, WNOHANG))
-		tst_res(TFAIL, "Non zero bytes read");
-	else
-		tst_res(TPASS, "All bytes read were zeroed");
-
 	*run_child = 0;
+
+	if (!tst_validate_children(numchildren))
+		tst_res(TPASS, "All bytes read were zeroed");
 }
 
 static struct tst_test test = {
@@ -135,5 +135,5 @@ static struct tst_test test = {
 		"tmpfs",
 		NULL
 	},
-	.timeout = 1800,
+	.max_runtime = 1800,
 };

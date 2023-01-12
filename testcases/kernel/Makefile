@@ -29,6 +29,7 @@ SUBDIRS			+= connectors \
 			   io \
 			   ipc \
 			   irq \
+			   kvm \
 			   logging \
 			   mem \
 			   numa \
@@ -38,9 +39,14 @@ SUBDIRS			+= connectors \
 			   sound \
 			   tracing \
 			   uevents \
+			   watchqueue \
 
 ifeq ($(WITH_POWER_MANAGEMENT_TESTSUITE),yes)
 SUBDIRS			+= power_management
+endif
+
+ifeq ($(WITH_KVM_TESTSUITE),yes)
+SUBDIRS			+= kvm
 endif
 
 endif
