@@ -58,6 +58,7 @@ static long swap_free_init;
 static long mem_over;
 static long mem_over_max;
 static pid_t pid;
+static unsigned int start_runtime;
 
 static void test_swapping(void)
 {
@@ -66,6 +67,8 @@ static void test_swapping(void)
 #endif
 	FILE *file;
 	char line[PATH_MAX];
+
+	start_runtime = tst_remaining_runtime();
 
 	file = SAFE_FOPEN("/proc/swaps", "r");
 	while (fgets(line, sizeof(line), file)) {
@@ -95,10 +98,6 @@ static void init_meminfo(void)
 	mem_over = mem_available_init * COE_SLIGHT_OVER;
 	mem_over_max = mem_available_init * COE_DELTA;
 
-	/* at least 10MB available physical memory needed */
-	if (mem_available_init < 10240)
-		tst_brk(TCONF, "Not enough available mem to test.");
-
 	if (swap_free_init < mem_over_max)
 		tst_brk(TCONF, "Not enough swap space to test: swap_free_init(%ldkB) < mem_over_max(%ldkB)",
 				swap_free_init, mem_over_max);
@@ -126,7 +125,7 @@ static void do_alloc(int allow_raise)
 
 static void check_swapping(void)
 {
-	int status, i;
+	int status;
 	long swap_free_now, swapped;
 
 	/* wait child stop */
@@ -135,14 +134,14 @@ static void check_swapping(void)
 		tst_brk(TBROK, "child was not stopped.");
 
 	/* Still occupying memory, loop for a while */
-	i = 0;
-	while (i < 30) {
+	while (tst_remaining_runtime() > start_runtime/2) {
 		swap_free_now = SAFE_READ_MEMINFO("SwapFree:");
 		sleep(1);
-		if (labs(swap_free_now - SAFE_READ_MEMINFO("SwapFree:")) < 10)
+		long diff = labs(swap_free_now - SAFE_READ_MEMINFO("SwapFree:"));
+		if (diff < 10)
 			break;
 
-		i++;
+		tst_res(TINFO, "SwapFree difference %li", diff);
 	}
 
 	swapped = SAFE_READ_PROC_STATUS(pid, "VmSwap:");
@@ -162,7 +161,13 @@ static void check_swapping(void)
 static struct tst_test test = {
 	.needs_root = 1,
 	.forks_child = 1,
+	.min_mem_avail = 10,
+	.max_runtime = 600,
 	.test_all = test_swapping,
+	.needs_kconfigs = (const char *[]) {
+		"CONFIG_SWAP=y",
+		NULL
+	},
 	.tags = (const struct tst_tag[]) {
 		{"linux-git", "50a15981a1fa"},
 		{}

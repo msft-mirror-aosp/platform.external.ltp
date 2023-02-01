@@ -6,8 +6,10 @@
  * Email: code@zilogic.com
  */
 
-#ifdef HAVE_LINUX_FS_H
-# include <linux/fs.h>
+#ifndef HAVE_MOUNT_SETATTR
+# ifdef HAVE_LINUX_FS_H
+#  include <linux/fs.h>
+# endif
 #endif
 
 #include <sys/user.h>
@@ -39,6 +41,10 @@
 
 #ifndef FS_NODUMP_FL
 #define FS_NODUMP_FL	   0x00000040 /* do not dump file */
+#endif
+
+#ifndef FS_VERITY_FL
+#define FS_VERITY_FL	   0x00100000 /* Verity protected inode */
 #endif
 
 /*

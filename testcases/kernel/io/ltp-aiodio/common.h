@@ -44,8 +44,12 @@ static inline void io_append(const char *path, char pattern, int flags, size_t b
 
 	fd = SAFE_OPEN(path, flags, 0666);
 
-	for (i = 0; i < bcount; i++)
+	for (i = 0; i < bcount; i++) {
 		SAFE_WRITE(1, fd, bufptr, bs);
+
+		if (!tst_remaining_runtime())
+			break;
+	}
 
 	free(bufptr);
 	SAFE_CLOSE(fd);
@@ -63,7 +67,7 @@ static inline void io_read(const char *filename, int filesize, volatile int *run
 
 	tst_res(TINFO, "child %i reading file", getpid());
 
-	while (*run_child) {
+	for (;;) {
 		off_t offset = 0;
 		char *bufoff;
 
@@ -74,15 +78,21 @@ static inline void io_read(const char *filename, int filesize, volatile int *run
 			if (r > 0) {
 				bufoff = check_zero(buff, r);
 				if (bufoff) {
-					tst_res(TINFO, "non-zero read at offset %zu",
+					tst_res(TFAIL,
+						"non-zero read at offset %zu",
 						offset + (bufoff - buff));
-					break;
+					SAFE_CLOSE(fd);
+					exit(1);
 				}
 				offset += r;
 			}
+
+			if (!*run_child || !tst_remaining_runtime())
+				goto exit;
 		}
 	}
 
+exit:
 	SAFE_CLOSE(fd);
 }
 

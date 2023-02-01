@@ -40,6 +40,7 @@ do_test()
 	fi
 }
 
+. tst_test.sh
 tst_run
 -------------------------------------------------------------------------------
 
@@ -90,6 +91,7 @@ test2()
 	tst_res TPASS "Test $1 passed"
 }
 
+. tst_test.sh
 tst_run
 # output:
 # foo 1 TPASS: Test 1 passed
@@ -118,6 +120,7 @@ do_test()
 	esac
 }
 
+. tst_test.sh
 tst_run
 # output:
 # foo 1 TPASS: Test 1 passed
@@ -145,6 +148,7 @@ do_test()
 	tst_res TPASS "Test $1 passed with data '$2'"
 }
 
+. tst_test.sh
 tst_run
 # output:
 # foo 1 TPASS: Test 1 passed with data 'foo'
@@ -174,6 +178,7 @@ do_test()
 	esac
 }
 
+. tst_test.sh
 tst_run
 # output:
 # foo 1 TPASS: Test 1 passed with data 'foo'
@@ -189,13 +194,37 @@ space as default value is used. Of course, it's possible to use separate functio
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Similarily to the C library various checks and preparations can be requested
-simply by setting right '$TST_NEEDS_FOO'.
+simply by setting right '$TST_FOO'.
 
 [options="header"]
 |=============================================================================
 | Variable name            | Action done
+| 'TST_ALL_FILESYSTEMS'    | Testing on all available filesystems
+                             ('tst_test.all_filesystems' equivalent).
+                             When 'TST_SKIP_FILESYSTEMS' any listed filesystem is not
+                             included in the resulting list of supported filesystems.
+| 'TST_DEV_EXTRA_OPTS'     | Pass extra 'mkfs' options _after_ device name,
+                             to 'tst_mkfs', use with 'TST_FORMAT_DEVICE=1'.
+| 'TST_DEV_FS_OPTS'        | Pass 'mkfs' options _before_ the device name,
+                             to 'tst_mkfs', use with 'TST_FORMAT_DEVICE=1'.
+| 'TST_FORMAT_DEVICE'      | Format a block device with a filesystem, see
+                             https://github.com/linux-test-project/ltp/wiki/Shell-Test-API#formatting-device-with-a-filesystem[Formatting device with a filesystem].
+                             See also 'TST_DEV_EXTRA_OPTS', 'TST_DEV_FS_OPTS', 'TST_FS_TYPE'.
+                             Implies 'TST_NEEDS_DEVICE=1' (no need to set it).
+| 'TST_DEVICE'             | Block device name for 'tst_mount' and 'tst_mkfs', see
+                             https://github.com/linux-test-project/ltp/wiki/Shell-Test-API#formatting-device-with-a-filesystem[Formatting device with a filesystem].
+| 'TST_FS_TYPE'            | Override the default filesystem to be used. Also
+                             contains currently used filesystem during looping
+                             filesystems in 'TST_ALL_FILESYSTEMS=1'
+                             ('tst_device->fs_type' equivalent).
+| 'TST_MNTPOINT'           | Holds path to mountpoint used in 'tst_mount', see
+                             https://github.com/linux-test-project/ltp/wiki/Shell-Test-API#formatting-device-with-a-filesystem[Formatting device with a filesystem].
+| 'TST_MNT_PARAMS'         | Extra mount params for 'tst_mount', see
+                             https://github.com/linux-test-project/ltp/wiki/Shell-Test-API#formatting-device-with-a-filesystem[Formatting device with a filesystem].
+| 'TST_MOUNT_DEVICE'       | Mount device, see
+                             https://github.com/linux-test-project/ltp/wiki/Shell-Test-API#mounting-and-unmounting-filesystems[Mounting and unmounting filesystems].
 | 'TST_NEEDS_ROOT'         | Exit the test with 'TCONF' unless executed under root.
-|                          | Alternatively the 'tst_require_root' command can be used.
+                             Alternatively the 'tst_require_root' command can be used.
 | 'TST_NEEDS_TMPDIR'       | Create test temporary directory and cd into it.
 | 'TST_NEEDS_DEVICE'       | Prepare test temporary device, the path to testing
                              device is stored in '$TST_DEVICE' variable.
@@ -207,6 +236,8 @@ simply by setting right '$TST_NEEDS_FOO'.
 | 'TST_NEEDS_KCONFIGS'     | Checks kernel kconfigs support for the test (see below).
 | 'TST_NEEDS_KCONFIGS_IFS' | Used for splitting '$TST_NEEDS_KCONFIGS' variable,
                              default value is comma, it only supports single character.
+| 'TST_SKIP_FILESYSTEMS'   | Comma separated list of filesystems on which test will be skipped
+                             (tst_test.skip_filesystems equivalent).
 | 'TST_TIMEOUT'            | Maximum timeout set for the test in sec. Must be int >= 1,
                              or -1 (special value to disable timeout), default is 300.
                              Variable is meant be set in tests, not by user.
@@ -263,6 +294,7 @@ do_test()
 	...
 }
 
+. tst_test.sh
 tst_run
 -------------------------------------------------------------------------------
 
@@ -322,6 +354,7 @@ do_test()
 	...
 }
 
+. tst_test.sh
 tst_run
 -------------------------------------------------------------------------------
 
@@ -364,6 +397,7 @@ do_test()
 	...
 }
 
+. tst_test.sh
 tst_run
 -------------------------------------------------------------------------------
 
@@ -495,7 +529,24 @@ tst_random 0 1000
 Formatting device with a filesystem
 +++++++++++++++++++++++++++++++++++
 
-The 'tst_mkfs' helper will format device with the filesystem.
+'TST_FORMAT_DEVICE=1' can be used to format device before running the test.
+Uses '$TST_FS_TYPE' (by default ext2), '$TST_DEVICE' a block device to be
+formatted, usually prepared by the library (TST_NEEDS_DEVICE=1 must be set).
+'$TST_DEV_FS_OPTS' a 'mkfs' options _before_ the device path and
+'$TST_DEV_EXTRA_OPTS' extra 'mkfs'' options _after_ the device path.
+
+[source,sh]
+-------------------------------------------------------------------------------
+TST_FORMAT_DEVICE=1
+TST_DEV_FS_OPTS="-b 1024 -O quota"
+TST_DEV_EXTRA_OPTS="5m"
+TST_TESTFUNC=test
+
+test()
+{
+	tst_res TPASS "device formatted"
+}
+-------------------------------------------------------------------------------
 
 [source,sh]
 -------------------------------------------------------------------------------
@@ -747,7 +798,7 @@ a child binary process from a shell test and synchronize with it. This process
 must have checkpoints initialized by calling 'tst_reinit()'.
 
 1.7 Parsing kernel .config
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 The shell library provides an implementation of the kconfig parsing interface
 compatible with the C version.
 
