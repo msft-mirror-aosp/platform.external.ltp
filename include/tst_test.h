@@ -42,6 +42,8 @@
 #include "tst_lockdown.h"
 #include "tst_fips.h"
 #include "tst_taint.h"
+#include "tst_memutils.h"
+#include "tst_arch.h"
 
 /*
  * Reports testcase result.
@@ -79,6 +81,9 @@ void tst_brk_(const char *file, const int lineno, int ttype,
 		tst_brk_(__FILE__, __LINE__, (ttype), (arg_fmt), ##__VA_ARGS__);\
 	})
 
+void tst_printf(const char *const fmt, ...)
+		__attribute__((nonnull(1), format (printf, 1, 2)));
+
 /* flush stderr and stdout */
 void tst_flush(void);
 
@@ -94,6 +99,7 @@ pid_t safe_fork(const char *filename, unsigned int lineno);
 #include "tst_safe_file_ops.h"
 #include "tst_safe_net.h"
 #include "tst_clone.h"
+#include "tst_cgroup.h"
 
 /*
  * Wait for all children and exit with TBROK if
@@ -117,6 +123,7 @@ struct tst_option {
 int tst_parse_int(const char *str, int *val, int min, int max);
 int tst_parse_long(const char *str, long *val, long min, long max);
 int tst_parse_float(const char *str, float *val, float min, float max);
+int tst_parse_filesize(const char *str, long long *val, long long min, long long max);
 
 struct tst_tag {
 	const char *name;
@@ -125,6 +132,10 @@ struct tst_tag {
 
 extern unsigned int tst_variant;
 
+#define TST_NO_HUGEPAGES ((unsigned long)-1)
+
+#define TST_UNLIMITED_RUNTIME (-1)
+
 struct tst_test {
 	/* number of tests available in test() function */
 	unsigned int tcnt;
@@ -132,6 +143,12 @@ struct tst_test {
 	struct tst_option *options;
 
 	const char *min_kver;
+
+	/*
+	 * The supported_archs is a NULL terminated list of archs the test
+	 * does support.
+	 */
+	const char *const *supported_archs;
 
 	/* If set the test is compiled out */
 	const char *tconf_msg;
@@ -150,13 +167,15 @@ struct tst_test {
 	int restore_wallclock:1;
 	/*
 	 * If set the test function will be executed for all available
-	 * filesystems and the current filesytem type would be set in the
+	 * filesystems and the current filesystem type would be set in the
 	 * tst_device->fs_type.
 	 *
 	 * The test setup and cleanup are executed before/after __EACH__ call
 	 * to the test function.
 	 */
 	int all_filesystems:1;
+	int skip_in_lockdown:1;
+	int skip_in_compat:1;
 
 	/*
 	 * The skip_filesystem is a NULL terminated list of filesystems the
@@ -168,17 +187,31 @@ struct tst_test {
 	/* Minimum number of online CPU required by the test */
 	unsigned long min_cpus;
 
+	/* Minimum size(MB) of MemAvailable required by the test */
+	unsigned long min_mem_avail;
+
 	/*
-	 * If set non-zero number of request_hugepages, test will try to reserve the
-	 * expected number of hugepage for testing in setup phase. If system does not
-	 * have enough hpage for using, it will try the best to reserve 80% available
-	 * number of hpages. With success test stores the reserved hugepage number in
-	 * 'tst_hugepages. For the system without hugetlb supporting, variable
-	 * 'tst_hugepages' will be set to 0.
+	 * Two policies for reserving hugepage:
+	 *
+	 * TST_REQUEST:
+	 *   It will try the best to reserve available huge pages and return the number
+	 *   of available hugepages in tst_hugepages, which may be 0 if hugepages are
+	 *   not supported at all.
+	 *
+	 * TST_NEEDS:
+	 *   This is an enforced requirement, LTP should strictly do hpages applying and
+	 *   guarantee the 'HugePages_Free' no less than pages which makes that test can
+	 *   use these specified numbers correctly. Otherwise, test exits with TCONF if
+	 *   the attempt to reserve hugepages fails or reserves less than requested.
+	 *
+	 * With success test stores the reserved hugepage number in 'tst_hugepages. For
+	 * the system without hugetlb supporting, variable 'tst_hugepages' will be set to 0.
+	 * If the hugepage number needs to be set to 0 on supported hugetlb system, please
+	 * use '.hugepages = {TST_NO_HUGEPAGES}'.
 	 *
 	 * Also, we do cleanup and restore work for the hpages resetting automatically.
 	 */
-	unsigned long request_hugepages;
+	struct tst_hugepage hugepages;
 
 	/*
 	 * If set to non-zero, call tst_taint_init(taint_check) during setup
@@ -213,8 +246,18 @@ struct tst_test {
 	unsigned int mnt_flags;
 	void *mnt_data;
 
-	/* override default timeout per test run, disabled == -1 */
-	int timeout;
+	/*
+	 * Maximal test runtime in seconds.
+	 *
+	 * Any test that runs for more than a second or two should set this and
+	 * also use tst_remaining_runtime() to exit when runtime was used up.
+	 * Tests may finish sooner, for example if requested number of
+	 * iterations was reached before the runtime runs out.
+	 *
+	 * If test runtime cannot be know in advance it should be set to
+	 * TST_UNLIMITED_RUNTIME.
+	 */
+	int max_runtime;
 
 	void (*setup)(void);
 	void (*cleanup)(void);
@@ -235,10 +278,10 @@ struct tst_test {
 	const char * const *needs_drivers;
 
 	/*
-	 * NULL terminated array of (/proc, /sys) files to save
+	 * {NULL, NULL} terminated array of (/proc, /sys) files to save
 	 * before setup and restore after cleanup
 	 */
-	const char * const *save_restore;
+	const struct tst_path_val *save_restore;
 
 	/*
 	 * NULL terminated array of kernel config options required for the
@@ -247,12 +290,12 @@ struct tst_test {
 	const char *const *needs_kconfigs;
 
 	/*
-	 * NULL-terminated array to be allocated buffers.
+	 * {NULL, NULL} terminated array to be allocated buffers.
 	 */
 	struct tst_buffers *bufs;
 
 	/*
-	 * NULL-terminated array of capability settings
+	 * {NULL, NULL} terminated array of capability settings
 	 */
 	struct tst_cap *caps;
 
@@ -263,6 +306,12 @@ struct tst_test {
 
 	/* NULL terminated array of required commands */
 	const char *const *needs_cmds;
+
+	/* Requires a particular CGroup API version. */
+	const enum tst_cg_ver needs_cgroup_ver;
+
+	/* {} terminated array of required CGroup controllers */
+	const char *const *needs_cgroup_ctrls;
 };
 
 /*
@@ -270,6 +319,8 @@ struct tst_test {
  */
 void tst_run_tcases(int argc, char *argv[], struct tst_test *self)
                     __attribute__ ((noreturn));
+
+#define IPC_ENV_VAR "LTP_IPC_PATH"
 
 /*
  * Does library initialization for child processes started by exec()
@@ -290,15 +341,34 @@ const char *tst_strsig(int sig);
  */
 const char *tst_strstatus(int status);
 
-unsigned int tst_timeout_remaining(void);
 unsigned int tst_multiply_timeout(unsigned int timeout);
-void tst_set_timeout(int timeout);
 
+/*
+ * Returns remaining test runtime. Test that runs for more than a few seconds
+ * should check if they should exit by calling this function regularly.
+ *
+ * The function returns remaining runtime in seconds. If runtime was used up
+ * zero is returned.
+ */
+unsigned int tst_remaining_runtime(void);
+
+/*
+ * Sets maximal test runtime in seconds.
+ */
+void tst_set_max_runtime(int max_runtime);
 
 /*
  * Returns path to the test temporary directory in a newly allocated buffer.
  */
 char *tst_get_tmpdir(void);
+
+/*
+ * Validates exit status of child processes
+ */
+int tst_validate_children_(const char *file, const int lineno,
+	unsigned int count);
+#define tst_validate_children(child_count) \
+	tst_validate_children_(__FILE__, __LINE__, (child_count))
 
 #ifndef TST_NO_DEFAULT_MAIN
 

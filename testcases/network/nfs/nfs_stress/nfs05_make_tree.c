@@ -60,10 +60,10 @@ static int file_num = 100;
 static char *t_arg, *d_arg, *f_arg;
 
 static struct tst_option opts[] = {
-	{"t:", &t_arg, "-t x    Number of threads to generate, default: 8\n"},
-	{"d:", &d_arg, "-d x    Number of subdirs to generate, default: 100\n"},
-	{"f:", &f_arg, "-f x    Number of c files in each dir, default: 100\n"},
-	{NULL, NULL, NULL}
+	{"t:", &t_arg, "Number of threads to generate, default: 8"},
+	{"d:", &d_arg, "Number of subdirs to generate, default: 100"},
+	{"f:", &f_arg, "Number of c files in each dir, default: 100"},
+	{}
 };
 
 static void run_targets(const char *dirname, char *cfile, pid_t tid)
@@ -215,4 +215,5 @@ static struct tst_test test = {
 	.options = opts,
 	.test_all = do_test,
 	.setup = setup,
+	.max_runtime = 300,
 };

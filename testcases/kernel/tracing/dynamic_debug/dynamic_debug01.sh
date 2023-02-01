@@ -17,16 +17,12 @@ TST_NEEDS_ROOT=1
 TST_SETUP=setup
 TST_CLEANUP=cleanup
 
-. tst_test.sh
-
-
 DEBUGFS_WAS_MOUNTED=0
 DEBUGFS_PATH=""
 DEBUGFS_CONTROL=""
 DYNDEBUG_STATEMENTS="./debug_statements"
 EMPTY_FLAG="-"
 NEW_INTERFACE=0
-
 
 mount_debugfs()
 {
@@ -38,7 +34,7 @@ mount_debugfs()
 		if ! grep -q debugfs /proc/filesystems ; then
 			tst_res TCONF "debugfs not supported"
 		fi
-		DEBUGFS_PATH="./tst_debug"
+		DEBUGFS_PATH="$PWD/tst_debug"
 		mkdir "$DEBUGFS_PATH"
 		if mount -t debugfs xxx "$DEBUGFS_PATH" ; then
 			tst_res TINFO "debugfs mounted at $DEBUGFS_PATH"
@@ -153,4 +149,5 @@ cleanup()
 	fi
 }
 
+. tst_test.sh
 tst_run

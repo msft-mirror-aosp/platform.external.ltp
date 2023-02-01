@@ -25,6 +25,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
+#include <mntent.h>
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -43,7 +44,7 @@
 #define LOOP_CONTROL_FILE "/dev/loop-control"
 
 #define DEV_FILE "test_dev.img"
-#define DEV_SIZE_MB 256u
+#define DEV_SIZE_MB 300u
 
 static char dev_path[1024];
 static int device_acquired;
@@ -194,6 +195,48 @@ int tst_attach_device(const char *dev, const char *file)
 	return 0;
 }
 
+uint64_t tst_get_device_size(const char *dev_path)
+{
+	int fd;
+	uint64_t size;
+	struct stat st;
+
+	if (!dev_path)
+		tst_brkm(TBROK, NULL, "No block device path");
+
+	if (stat(dev_path, &st)) {
+		tst_resm(TWARN | TERRNO, "stat() failed");
+		return -1;
+	}
+
+	if (!S_ISBLK(st.st_mode)) {
+		tst_resm(TWARN, "%s is not a block device", dev_path);
+		return -1;
+	}
+
+	fd = open(dev_path, O_RDONLY);
+	if (fd < 0) {
+		tst_resm(TWARN | TERRNO,
+				"open(%s, O_RDONLY) failed", dev_path);
+		return -1;
+	}
+
+	if (ioctl(fd, BLKGETSIZE64, &size)) {
+		tst_resm(TWARN | TERRNO,
+				"ioctl(fd, BLKGETSIZE64, ...) failed");
+		close(fd);
+		return -1;
+	}
+
+	if (close(fd)) {
+		tst_resm(TWARN | TERRNO,
+				"close(fd) failed");
+		return -1;
+	}
+
+	return size/1024/1024;
+}
+
 int tst_detach_device_by_fd(const char *dev, int dev_fd)
 {
 	int ret, i;
@@ -243,7 +286,7 @@ int tst_dev_sync(int fd)
 
 const char *tst_acquire_loop_device(unsigned int size, const char *filename)
 {
-	unsigned int acq_dev_size = MAX(size, DEV_SIZE_MB);
+	unsigned int acq_dev_size = size ? size : DEV_SIZE_MB;
 
 	if (tst_prealloc_file(filename, 1024 * 1024, acq_dev_size)) {
 		tst_resm(TWARN | TERRNO, "Failed to create %s", filename);
@@ -261,50 +304,18 @@ const char *tst_acquire_loop_device(unsigned int size, const char *filename)
 
 const char *tst_acquire_device__(unsigned int size)
 {
-	int fd;
 	const char *dev;
-	struct stat st;
 	unsigned int acq_dev_size;
 	uint64_t ltp_dev_size;
 
-	acq_dev_size = MAX(size, DEV_SIZE_MB);
+	acq_dev_size = size ? size : DEV_SIZE_MB;
 
 	dev = getenv("LTP_DEV");
 
 	if (dev) {
 		tst_resm(TINFO, "Using test device LTP_DEV='%s'", dev);
 
-		if (stat(dev, &st)) {
-			tst_resm(TWARN | TERRNO, "stat() failed");
-			return NULL;
-		}
-
-		if (!S_ISBLK(st.st_mode)) {
-			tst_resm(TWARN, "%s is not a block device", dev);
-			return NULL;
-		}
-
-		fd = open(dev, O_RDONLY);
-		if (fd < 0) {
-			tst_resm(TWARN | TERRNO,
-				 "open(%s, O_RDONLY) failed", dev);
-			return NULL;
-		}
-
-		if (ioctl(fd, BLKGETSIZE64, &ltp_dev_size)) {
-			tst_resm(TWARN | TERRNO,
-				 "ioctl(fd, BLKGETSIZE64, ...) failed");
-			close(fd);
-			return NULL;
-		}
-
-		if (close(fd)) {
-			tst_resm(TWARN | TERRNO,
-				 "close(fd) failed");
-			return NULL;
-		}
-
-		ltp_dev_size = ltp_dev_size/1024/1024;
+		ltp_dev_size = tst_get_device_size(dev);
 
 		if (acq_dev_size <= ltp_dev_size)
 			return dev;
@@ -502,6 +513,16 @@ unsigned long tst_dev_bytes_written(const char *dev)
 	return dev_bytes_written;
 }
 
+static int count_match_len(const char *first, const char *second)
+{
+	int len = 0;
+
+	while (*first && *first++ == *second++)
+		len++;
+
+	return len;
+}
+
 void tst_find_backing_dev(const char *path, char *dev)
 {
 	struct stat buf;
@@ -510,6 +531,8 @@ void tst_find_backing_dev(const char *path, char *dev)
 	char *pre = NULL;
 	char *next = NULL;
 	unsigned int dev_major, dev_minor, line_mjr, line_mnr;
+	unsigned int len, best_match_len = 1;
+	char mnt_point[PATH_MAX];
 
 	if (stat(path, &buf) < 0)
 		tst_brkm(TWARN | TERRNO, NULL, "stat() failed");
@@ -520,16 +543,24 @@ void tst_find_backing_dev(const char *path, char *dev)
 	*dev = '\0';
 
 	while (fgets(line, sizeof(line), file)) {
-		if (sscanf(line, "%*d %*d %d:%d", &line_mjr, &line_mnr) != 2)
+		if (sscanf(line, "%*d %*d %d:%d %*s %s",
+			&line_mjr, &line_mnr, mnt_point) != 3)
 			continue;
 
+		pre = strstr(line, " - ");
+		pre = strtok_r(pre, " ", &next);
+		pre = strtok_r(NULL, " ", &next);
+		pre = strtok_r(NULL, " ", &next);
+
 		if (line_mjr == dev_major && line_mnr == dev_minor) {
-			pre = strstr(line, " - ");
-			pre = strtok_r(pre, " ", &next);
-			pre = strtok_r(NULL, " ", &next);
-			pre = strtok_r(NULL, " ", &next);
 			strcpy(dev, pre);
 			break;
+		}
+
+		len = count_match_len(path, mnt_point);
+		if (len > best_match_len) {
+			strcpy(dev, pre);
+			best_match_len = len;
 		}
 	}
 
@@ -543,4 +574,53 @@ void tst_find_backing_dev(const char *path, char *dev)
 
 	if (S_ISBLK(buf.st_mode) != 1)
 		tst_brkm(TCONF, NULL, "dev(%s) isn't a block dev", dev);
+}
+
+void tst_stat_mount_dev(const char *const mnt_path, struct stat *const st)
+{
+	struct mntent *mnt;
+	FILE *mntf = setmntent("/proc/self/mounts", "r");
+
+	if (!mntf) {
+		tst_brkm(TBROK | TERRNO, NULL, "Can't open /proc/self/mounts");
+		return;
+	}
+
+	mnt = getmntent(mntf);
+	if (!mnt) {
+		tst_brkm(TBROK | TERRNO, NULL, "Can't read mounts or no mounts?");
+		return;
+	}
+
+	do {
+		if (strcmp(mnt->mnt_dir, mnt_path)) {
+			mnt = getmntent(mntf);
+			continue;
+		}
+
+		if (stat(mnt->mnt_fsname, st)) {
+			tst_brkm(TBROK | TERRNO, NULL,
+				 "Can't stat '%s', mounted at '%s'",
+				 mnt->mnt_fsname, mnt_path);
+		}
+
+		return;
+	} while (mnt);
+
+	tst_brkm(TBROK, NULL, "Could not find mount device");
+}
+
+int tst_dev_block_size(const char *path)
+{
+	int fd;
+	int size;
+	char dev_name[1024];
+
+	tst_find_backing_dev(path, dev_name);
+
+	fd = SAFE_OPEN(NULL, dev_name, O_RDONLY);
+	SAFE_IOCTL(NULL, fd, BLKSSZGET, &size);
+	SAFE_CLOSE(NULL, fd);
+
+	return size;
 }

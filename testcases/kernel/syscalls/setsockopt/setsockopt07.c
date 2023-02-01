@@ -31,12 +31,16 @@
 #include "lapi/if_ether.h"
 
 static int sock = -1;
+static unsigned int pagesize;
 static struct tst_fzsync_pair fzsync_pair;
 
 static void setup(void)
 {
 	int real_uid = getuid();
 	int real_gid = getgid();
+
+	pagesize = SAFE_SYSCONF(_SC_PAGESIZE);
+	SAFE_TRY_FILE_PRINTF("/proc/sys/user/max_user_namespaces", "%d", 10);
 
 	SAFE_UNSHARE(CLONE_NEWUSER);
 	SAFE_UNSHARE(CLONE_NEWNET);
@@ -71,9 +75,9 @@ static void run(void)
 	unsigned int val, version = TPACKET_V3;
 	socklen_t vsize = sizeof(val);
 	struct tpacket_req3 req = {
-		.tp_block_size = 4096,
+		.tp_block_size = pagesize,
 		.tp_block_nr = 1,
-		.tp_frame_size = 4096,
+		.tp_frame_size = pagesize,
 		.tp_frame_nr = 1,
 		.tp_retire_blk_tov = 100
 	};
@@ -111,7 +115,7 @@ static void run(void)
 				"Invalid setsockopt() return value");
 		}
 
-		if (val > req.tp_block_size){
+		if (val > req.tp_block_size) {
 			tst_res(TFAIL, "PACKET_RESERVE checks bypassed");
 			return;
 		}
@@ -132,10 +136,15 @@ static struct tst_test test = {
 	.test_all = run,
 	.setup = setup,
 	.cleanup = cleanup,
+	.max_runtime = 150,
 	.needs_kconfigs = (const char *[]) {
 		"CONFIG_USER_NS=y",
 		"CONFIG_NET_NS=y",
 		NULL
+	},
+	.save_restore = (const struct tst_path_val[]) {
+		{"?/proc/sys/user/max_user_namespaces", NULL},
+		{}
 	},
 	.tags = (const struct tst_tag[]) {
 		{"linux-git", "c27927e372f0"},
