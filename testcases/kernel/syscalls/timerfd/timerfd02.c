@@ -54,7 +54,6 @@
 /*                      - Jan 08 2009 - Subrata <subrata@linux.vnet.ibm.com>  */
 /******************************************************************************/
 
-#include <fcntl.h>
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
@@ -138,7 +137,7 @@ int main(int argc, char *argv[])
 	for (lc = 0; TEST_LOOPING(lc); ++lc) {
 		tst_count = 0;
 		for (testno = 0; testno < TST_TOTAL; ++testno) {
-			fd = ltp_syscall(__NR_timerfd_create,
+			fd = tst_syscall(__NR_timerfd_create,
 				CLOCK_REALTIME, 0);
 			if (fd == -1) {
 				tst_brkm(TFAIL, cleanup,
@@ -155,7 +154,7 @@ int main(int argc, char *argv[])
 			}
 			close(fd);
 
-			fd = ltp_syscall(__NR_timerfd_create, CLOCK_REALTIME,
+			fd = tst_syscall(__NR_timerfd_create, CLOCK_REALTIME,
 				     TFD_CLOEXEC);
 			if (fd == -1) {
 				tst_brkm(TFAIL,

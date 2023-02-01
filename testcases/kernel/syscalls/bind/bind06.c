@@ -34,6 +34,8 @@ static void setup(void)
 	int real_gid = getgid();
 	struct ifreq ifr;
 
+	SAFE_TRY_FILE_PRINTF("/proc/sys/user/max_user_namespaces", "%d", 10);
+
 	SAFE_UNSHARE(CLONE_NEWUSER);
 	SAFE_UNSHARE(CLONE_NEWNET);
 	SAFE_FILE_PRINTF("/proc/self/setgroups", "deny");
@@ -100,12 +102,16 @@ static struct tst_test test = {
 	.test_all = run,
 	.setup = setup,
 	.cleanup = cleanup,
-	.timeout = 600,
+	.max_runtime = 300,
 	.taint_check = TST_TAINT_W | TST_TAINT_D,
 	.needs_kconfigs = (const char *[]) {
 		"CONFIG_USER_NS=y",
 		"CONFIG_NET_NS=y",
 		NULL
+	},
+	.save_restore = (const struct tst_path_val[]) {
+		{"?/proc/sys/user/max_user_namespaces", NULL},
+		{}
 	},
 	.tags = (const struct tst_tag[]) {
 		{"linux-git", "15fe076edea7"},

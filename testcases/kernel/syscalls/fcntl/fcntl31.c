@@ -25,7 +25,6 @@
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <string.h>
 #include <signal.h>
 #include <sys/types.h>
@@ -211,7 +210,7 @@ static void setownex_tid_test(void)
 	}
 
 	tst_own_ex.type = F_OWNER_TID;
-	tst_own_ex.pid = ltp_syscall(__NR_gettid);
+	tst_own_ex.pid = tst_syscall(__NR_gettid);
 
 	TEST(fcntl(test_fd, F_SETOWN_EX, &tst_own_ex));
 	if (TEST_RETURN < 0) {

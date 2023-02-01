@@ -30,7 +30,7 @@
 
 #define EVENT_MAX 1024
 /* size of the event structure, not counting name */
-#define EVENT_SIZE  (sizeof (struct fanotify_event_metadata))
+#define EVENT_SIZE  (sizeof(struct fanotify_event_metadata))
 /* reasonable guess as to size of 1024 events */
 #define EVENT_BUF_LEN        (EVENT_MAX * EVENT_SIZE)
 /* Size large enough to hold a reasonable amount of expected event objects */
@@ -273,20 +273,20 @@ static void test_fanotify(unsigned int n)
 				"pid=%u fd=%d",
 				(unsigned long long)event->mask,
 				event_set[test_num].mask,
-				(unsigned)event->pid, event->fd);
+				(unsigned int)event->pid, event->fd);
 		} else if (event->pid != child_pid) {
 			tst_res(TFAIL,
 				"got event: mask=%llx pid=%u "
 				"(expected %u) fd=%d",
 				(unsigned long long)event->mask,
-				(unsigned)event->pid,
-				(unsigned)child_pid,
+				(unsigned int)event->pid,
+				(unsigned int)child_pid,
 				event->fd);
 		} else {
 			tst_res(TPASS,
 				"got event: mask=%llx pid=%u fd=%d",
 				(unsigned long long)event->mask,
-				(unsigned)event->pid, event->fd);
+				(unsigned int)event->pid, event->fd);
 		}
 
 		/* Write response to the permission event */
@@ -323,8 +323,8 @@ static void setup(void)
 	require_fanotify_access_permissions_supported_by_kernel();
 
 	filesystem_mark_unsupported = fanotify_mark_supported_by_kernel(FAN_MARK_FILESYSTEM);
-	exec_events_unsupported = fanotify_events_supported_by_kernel(FAN_OPEN_EXEC_PERM);
-
+	exec_events_unsupported = fanotify_events_supported_by_kernel(FAN_OPEN_EXEC_PERM,
+								      FAN_CLASS_CONTENT, 0);
 	sprintf(fname, MOUNT_PATH"/fname_%d", getpid());
 	SAFE_FILE_PRINTF(fname, "1");
 
