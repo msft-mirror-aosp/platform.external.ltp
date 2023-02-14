@@ -14,6 +14,10 @@
 #include "tst_test.h"
 #include "tst_fs.h"
 
+/*
+ * NOTE: new filesystem should be also added to
+ * lib/newlib_tests/shell/tst_{all_filesystems_skip,skip_filesystems}.sh
+ */
 static const char *const fs_type_whitelist[] = {
 	"ext2",
 	"ext3",
@@ -172,36 +176,4 @@ const char **tst_get_supported_fs_types(const char *const *skiplist)
 	}
 
 	return fs_types;
-}
-
-int tst_check_quota_support(const char *device, int format, char *quotafile)
-{
-	const long ret = quotactl(QCMD(Q_QUOTAON, USRQUOTA), device, format,
-				  quotafile);
-
-	/* Not supported */
-
-	if (ret == -1 && errno == ESRCH)
-		return 0;
-
-	/* Broken */
-	if (ret)
-		return -1;
-
-	quotactl(QCMD(Q_QUOTAOFF, USRQUOTA), device, 0, 0);
-	return 1;
-}
-
-void tst_require_quota_support_(const char *file, const int lineno,
-	const char *device, int format, char *quotafile)
-{
-	int status = tst_check_quota_support(device, format, quotafile);
-
-	if (!status) {
-		tst_brk_(file, lineno, TCONF,
-			"Kernel or device does not support FS quotas");
-	}
-
-	if (status < 0)
-		tst_brk_(file, lineno, TBROK|TERRNO, "FS quotas are broken");
 }
