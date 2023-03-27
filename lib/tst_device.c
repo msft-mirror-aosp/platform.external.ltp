@@ -54,19 +54,19 @@ static char dev_path[PATH_MAX];
 static int device_acquired;
 static unsigned long prev_dev_sec_write;
 
-static const char *dev_variants[] = {
+static const char *dev_loop_variants[] = {
 	"/dev/loop%i",
 	"/dev/loop/%i",
 	"/dev/block/loop%i"
 };
 
-static int set_dev_path(int dev, char *path, size_t path_len)
+static int set_dev_loop_path(int dev, char *path, size_t path_len)
 {
 	unsigned int i;
 	struct stat st;
 
-	for (i = 0; i < ARRAY_SIZE(dev_variants); i++) {
-		snprintf(path, path_len, dev_variants[i], dev);
+	for (i = 0; i < ARRAY_SIZE(dev_loop_variants); i++) {
+		snprintf(path, path_len, dev_loop_variants[i], dev);
 
 		if (stat(path, &st) == 0 && S_ISBLK(st.st_mode))
 			return 1;
@@ -91,7 +91,7 @@ int tst_find_free_loopdev(char *path, size_t path_len)
 			if (path) {
 				// b/148978487 retry to allow time for device creation
 				for (i = 0; i < 50; i++) {
-					path_set = set_dev_path(rc, path, path_len);
+					path_set = set_dev_loop_path(rc, path, path_len);
 					// set_dev_path returns 1 on success
 					if (path_set > 0)
 						break;
@@ -126,7 +126,7 @@ int tst_find_free_loopdev(char *path, size_t path_len)
 	 */
 	for (i = 0; i < 256; i++) {
 
-		if (!set_dev_path(i, buf, sizeof(buf)))
+		if (!set_dev_loop_path(i, buf, sizeof(buf)))
 			continue;
 
 		dev_fd = open(buf, O_RDONLY);
