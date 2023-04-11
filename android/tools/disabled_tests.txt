@@ -617,3 +617,7 @@ set_mempolicy05
 # b/246845416
 kvm_pagefault01
 kvm_pagefault01-payload.elf
+
+# Redefines cacheflush
+# b/277960476
+hugemmap15
