@@ -69,10 +69,10 @@ static int set_dev_loop_path(int dev, char *path, size_t path_len)
 		snprintf(path, path_len, dev_loop_variants[i], dev);
 
 		if (stat(path, &st) == 0 && S_ISBLK(st.st_mode))
-			return 1;
+			return 0;
 	}
 
-	return 0;
+	return 1;
 }
 
 int tst_find_free_loopdev(char *path, size_t path_len)
@@ -93,11 +93,11 @@ int tst_find_free_loopdev(char *path, size_t path_len)
 				for (i = 0; i < 50; i++) {
 					path_set = set_dev_loop_path(rc, path, path_len);
 					// set_dev_path returns 1 on success
-					if (path_set > 0)
+					if (!path_set)
 						break;
 					usleep(50000);
 				}
-				if (path_set == 0)
+				if (path_set)
 					tst_brkm(TBROK, NULL, "Could not stat device %d", rc);
 			}
 			tst_resm(TINFO, "Found free device %d '%s'",
@@ -126,7 +126,7 @@ int tst_find_free_loopdev(char *path, size_t path_len)
 	 */
 	for (i = 0; i < 256; i++) {
 
-		if (!set_dev_loop_path(i, buf, sizeof(buf)))
+		if (set_dev_loop_path(i, buf, sizeof(buf)))
 			continue;
 
 		dev_fd = open(buf, O_RDONLY);
