@@ -98,7 +98,7 @@ int tst_find_free_loopdev(char *path, size_t path_len)
 					usleep(50000);
 				}
 				if (path_set)
-					tst_brkm(TBROK, NULL, "Could not stat device %d", rc);
+					tst_brkm(TBROK, NULL, "Could not stat loop device %i", rc);
 			}
 			tst_resm(TINFO, "Found free device %d '%s'",
 				rc, path ?: "");
