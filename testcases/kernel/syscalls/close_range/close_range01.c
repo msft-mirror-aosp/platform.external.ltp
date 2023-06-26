@@ -28,7 +28,7 @@
 #include "tst_test.h"
 #include "tst_clone.h"
 
-#include "lapi/clone.h"
+#include "lapi/sched.h"
 #include "lapi/close_range.h"
 
 static int fd[3];
@@ -40,9 +40,6 @@ static inline void do_close_range(unsigned int fd, unsigned int max_fd,
 
 	if (!ret)
 		return;
-
-	// Match external/ltp include/lapi/syscalls/regen.sh:72
-	if (ret == -1 && errno == ENOSYS) tst_brk(TCONF, "close_range not supported");
 
 	if (errno == EINVAL) {
 		if (flags & CLOSE_RANGE_UNSHARE)
@@ -56,6 +53,8 @@ static inline void do_close_range(unsigned int fd, unsigned int max_fd,
 
 static void setup(void)
 {
+	close_range_supported_by_kernel();
+
 	struct rlimit nfd;
 
 	SAFE_GETRLIMIT(RLIMIT_NOFILE, &nfd);
