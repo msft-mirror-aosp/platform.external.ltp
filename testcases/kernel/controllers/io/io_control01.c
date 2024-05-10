@@ -55,6 +55,7 @@ static void run(void)
 	char *buf = SAFE_MALLOC(MAX((size_t)BUFSIZ, pgsz));
 	struct io_stats start;
 
+	memset(&start, 0, sizeof(struct io_stats));
 	SAFE_CG_READ(tst_cg, "io.stat", buf, BUFSIZ - 1);
 	line = strtok_r(buf, "\n", &buf_ptr);
 	while (line) {
@@ -80,7 +81,7 @@ static void run(void)
 	fd = SAFE_OPEN("mnt/dat", O_WRONLY | O_CREAT, 0600);
 
 	for (i = 0; i < 4; i++) {
-		SAFE_WRITE(1, fd, buf, pgsz);
+		SAFE_WRITE(SAFE_WRITE_ALL, fd, buf, pgsz);
 		SAFE_FSYNC(fd);
 		TST_EXP_PASS_SILENT(posix_fadvise(fd, pgsz * i, pgsz, POSIX_FADV_DONTNEED));
 	}

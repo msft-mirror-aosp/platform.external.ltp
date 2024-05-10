@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (c) 2017 Cyril Hrubis <chrubis@suse.cz>
+ * Copyright (c) Linux Test Project, 2018-2023
  */
 
 #include <stdio.h>
@@ -24,11 +25,17 @@ static const char *const fs_type_whitelist[] = {
 	"ext4",
 	"xfs",
 	"btrfs",
+	"bcachefs",
 	"vfat",
 	"exfat",
 	"ntfs",
 	"tmpfs",
 	NULL
+};
+
+static const char *const fs_type_fuse_blacklist[] = {
+	"bcachefs",
+	NULL,
 };
 
 static const char *fs_types[ARRAY_SIZE(fs_type_whitelist)];
@@ -74,13 +81,10 @@ int tst_fs_in_skiplist(const char *fs_type, const char *const *skiplist)
 static enum tst_fs_impl has_kernel_support(const char *fs_type)
 {
 	static int fuse_supported = -1;
-	const char *tmpdir = getenv("TMPDIR");
+	const char *tmpdir = tst_get_tmpdir_root();
 	char buf[128];
 	char template[PATH_MAX];
 	int ret;
-
-	if (!tmpdir)
-		tmpdir = "/tmp";
 
 	snprintf(template, sizeof(template), "%s/mountXXXXXX", tmpdir);
 	if (!mkdtemp(template))
@@ -96,6 +100,11 @@ static enum tst_fs_impl has_kernel_support(const char *fs_type)
 	}
 
 	SAFE_RMDIR(template);
+
+	if (tst_fs_in_skiplist(fs_type, fs_type_fuse_blacklist)) {
+		tst_res(TINFO, "Skipping %s because of FUSE blacklist", fs_type);
+		return TST_FS_UNSUPPORTED;
+	}
 
 	/* Is FUSE supported by kernel? */
 	if (fuse_supported == -1) {

@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
-* Copyright (c) 2015 Fujitsu Ltd.
-* Author: Xiao Yang <yangx.jy@cn.fujitsu.com>
-*/
+ * Copyright (c) 2015 Fujitsu Ltd.
+ * Author: Xiao Yang <yangx.jy@cn.fujitsu.com>
+ * Copyright (c) Linux Test Project, 2016-2023
+ */
 
-/*
-* Test Name: preadv01
-*
-* Test Description:
-* Testcase to check the basic functionality of the preadv(2).
-* Preadv(2) should succeed to read the expected content of data
-* and after reading the file, the file offset is not changed.
-*/
+/*\
+ * [Description]
+ *
+ * Testcase to check the basic functionality of the preadv(2).
+ *
+ * Preadv(2) should succeed to read the expected content of data
+ * and after reading the file, the file offset is not changed.
+ */
 
 #define _GNU_SOURCE
 
@@ -38,7 +39,7 @@ static struct tcase {
 	{1, CHUNK*3/2, CHUNK/2, 'b'}
 };
 
-void verify_preadv(unsigned int n)
+static void verify_preadv(unsigned int n)
 {
 	int i;
 	char *vec;
@@ -81,20 +82,20 @@ void verify_preadv(unsigned int n)
 		 "with content '%c' expectedly", tc->size, tc->content);
 }
 
-void setup(void)
+static void setup(void)
 {
 	char buf[CHUNK];
 
 	fd = SAFE_OPEN("file", O_RDWR | O_CREAT, 0644);
 
 	memset(buf, 'a', sizeof(buf));
-	SAFE_WRITE(1, fd, buf, sizeof(buf));
+	SAFE_WRITE(SAFE_WRITE_ALL, fd, buf, sizeof(buf));
 
 	memset(buf, 'b', sizeof(buf));
-	SAFE_WRITE(1, fd, buf, sizeof(buf));
+	SAFE_WRITE(SAFE_WRITE_ALL, fd, buf, sizeof(buf));
 }
 
-void cleanup(void)
+static void cleanup(void)
 {
 	if (fd > 0)
 		SAFE_CLOSE(fd);
@@ -105,7 +106,6 @@ static struct tst_test test = {
 	.setup = setup,
 	.cleanup = cleanup,
 	.test = verify_preadv,
-	.min_kver = "2.6.30",
 	.needs_tmpdir = 1,
 	.bufs = (struct tst_buffers []) {
 		{&rd_iovec, .iov_sizes = (int[]){CHUNK, 0, -1}},

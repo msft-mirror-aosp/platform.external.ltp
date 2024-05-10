@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (c) 2017 Richard Palethorpe <rpalethorpe@suse.com>
+ * Copyright (c) Linux Test Project, 2019-2024
  */
-/* Check for CVE-2016-9604; that keys beginning with "." are disallowed.
+
+/*\
+ * [Description]
  *
- * See commit ee8f844e3c5a73b999edf733df1c529d6503ec2f
+ * Test for CVE-2016-9604, checks that keys beginning with "." are disallowed.
+ *
+ * See commit
+ * ee8f844e3c5a ("KEYS: Disallow keyrings beginning with '.' to be joined as session keyrings")
  */
 
 #include <errno.h>
@@ -28,7 +34,6 @@ void run(void)
 static struct tst_test test = {
 	.test_all = run,
 	.needs_root = 1,
-	.min_kver = "2.6.13",
 	.tags = (const struct tst_tag[]) {
 		{"CVE", "2016-9604"},
 		{"linux-git", "ee8f844e3c5a"},

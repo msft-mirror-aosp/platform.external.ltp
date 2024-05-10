@@ -3,12 +3,14 @@
  * Copyright (c) International Business Machines Corp., 2001
  */
 
-/*
- * DESCRIPTION
+/*\
+ * [Description]
+ *
  * Testcase to check the basic functionality of the getcwd(2) system call.
- * 1) getcwd(2) works fine if buf and size are valid.
- * 2) getcwd(2) works fine if buf points to NULL and size is set to 0.
- * 3) getcwd(2) works fine if buf points to NULL and size is greater than strlen(path).
+ *
+ * 1. getcwd(2) works fine if buf and size are valid.
+ * 2. getcwd(2) works fine if buf points to NULL and size is set to 0.
+ * 3. getcwd(2) works fine if buf points to NULL and size is greater than strlen(path).
  */
 
 #include <errno.h>
@@ -42,28 +44,6 @@ static int dir_exists(const char *dirpath)
 	return 0;
 }
 
-static const char *get_tmpdir_path(void)
-{
-	char *tmpdir = "/tmp";
-
-	if (dir_exists(tmpdir))
-		goto done;
-
-	/* fallback to $TMPDIR */
-	tmpdir = getenv("TMPDIR");
-	if (!tmpdir)
-		tst_brk(TBROK | TERRNO, "Failed to get $TMPDIR");
-
-	if (tmpdir[0] != '/')
-		tst_brk(TBROK, "$TMPDIR must be an absolute path");
-
-	if (!dir_exists(tmpdir))
-		tst_brk(TBROK | TERRNO, "TMPDIR '%s' doesn't exist", tmpdir);
-
-done:
-	return tmpdir;
-}
-
 static void verify_getcwd(unsigned int n)
 {
 	struct t_case *tc = &tcases[n];
@@ -92,7 +72,10 @@ end:
 
 static void setup(void)
 {
-	const char *tmpdir = get_tmpdir_path();
+	const char *tmpdir = tst_get_tmpdir_root();
+
+	if (!dir_exists(tmpdir))
+		tst_brk(TBROK | TERRNO, "TMPDIR '%s' doesn't exist", tmpdir);
 
 	SAFE_CHDIR(tmpdir);
 

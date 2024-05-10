@@ -2,12 +2,15 @@
 /*
  * Copyright (c) 2018 FUJITSU LIMITED. All rights reserved.
  * Author: Xiao Yang <yangx.jy@cn.fujitsu.com>
+ * Copyright (c) Linux Test Project, 2019-2023
  */
 
-/*
- * Description:
+/*\
+ * [Description]
+ *
  * Check the basic functionality of the preadv(2) for the file
  * opened with O_DIRECT in all filesystem.
+ *
  * preadv(2) should succeed to read the expected content of data
  * and after reading the file, the file offset is not changed.
  */
@@ -108,10 +111,10 @@ static void setup(void)
 
 	pop_buf = SAFE_MEMALIGN(blksz, blksz);
 	memset(pop_buf, 0x61, blksz);
-	SAFE_WRITE(1, fd, pop_buf, blksz);
+	SAFE_WRITE(SAFE_WRITE_ALL, fd, pop_buf, blksz);
 
 	memset(pop_buf, 0x62, blksz);
-	SAFE_WRITE(1, fd, pop_buf, blksz);
+	SAFE_WRITE(SAFE_WRITE_ALL, fd, pop_buf, blksz);
 
 	rd_iovec[0].iov_base = SAFE_MEMALIGN(blksz, blksz);
 	rd_iovec[0].iov_len = blksz;
@@ -131,7 +134,6 @@ static struct tst_test test = {
 	.setup = setup,
 	.cleanup = cleanup,
 	.test = verify_direct_preadv,
-	.min_kver = "2.6.30",
 	.mntpoint = MNTPOINT,
 	.mount_device = 1,
 	.all_filesystems = 1,

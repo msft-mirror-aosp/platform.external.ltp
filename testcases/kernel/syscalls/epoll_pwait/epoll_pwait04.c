@@ -28,7 +28,7 @@ static void run(void)
 
 static void setup(void)
 {
-	epoll_pwait_info();
+	epoll_pwait_init();
 
 	SAFE_SOCKETPAIR(AF_UNIX, SOCK_STREAM, 0, sfd);
 
@@ -38,8 +38,8 @@ static void setup(void)
 
 	e.events = EPOLLIN;
 	if (epoll_ctl(efd, EPOLL_CTL_ADD, sfd[0], &e))
-		tst_brk(TBROK | TERRNO, "epoll_clt(..., EPOLL_CTL_ADD, ...)");
-	SAFE_WRITE(1, sfd[1], "w", 1);
+		tst_brk(TBROK | TERRNO, "epoll_ctl(..., EPOLL_CTL_ADD, ...)");
+	SAFE_WRITE(SAFE_WRITE_ALL, sfd[1], "w", 1);
 
 	bad_addr = tst_get_bad_addr(NULL);
 }

@@ -25,6 +25,7 @@
 #include "test.h"
 #include "safe_macros.h"
 #include "input_helper.h"
+#include "lapi/uinput.h"
 
 #define VIRTUAL_DEVICE "virtual-device-ltp"
 
@@ -40,7 +41,7 @@ static int try_open_device(void)
 	int ret, fd = -1;
 	unsigned int i;
 
-	for (i = 0; i < 100; i++) {
+	for (i = 0; i < 1024; i++) {
 		snprintf(path, sizeof(path), "/dev/input/event%i", i);
 
 		fd = open(path, O_RDONLY);
@@ -175,7 +176,7 @@ void send_event(int fd, int event, int code, int value)
 		.value = value,
 	};
 
-	SAFE_WRITE(NULL, 1, fd, &ev, sizeof(ev));
+	SAFE_WRITE(NULL, SAFE_WRITE_ALL, fd, &ev, sizeof(ev));
 }
 
 void send_rel_move(int fd, int x, int y)
@@ -183,6 +184,29 @@ void send_rel_move(int fd, int x, int y)
 	send_event(fd, EV_REL, REL_X, x);
 	send_event(fd, EV_REL, REL_Y, y);
 	send_event(fd, EV_SYN, 0, 0);
+}
+
+static void check_ui_get_sysname_ioctl(int fd)
+{
+	char sys_name[256];
+	char dev_name[256];
+	char *path;
+
+	SAFE_IOCTL(NULL, fd, UI_GET_SYSNAME(sizeof(sys_name)), sys_name, NULL);
+	SAFE_ASPRINTF(NULL, &path, "/sys/devices/virtual/input/%s/name", sys_name);
+
+	if (FILE_SCANF(path, "%s", dev_name)) {
+		tst_resm(TFAIL|TERRNO, "Failed to read '%s'", path);
+		free(path);
+		return;
+	}
+
+	if (!strcmp(VIRTUAL_DEVICE, dev_name))
+		tst_resm(TPASS, "ioctl UI_GET_SYSNAME returned correct name");
+	else
+		tst_resm(TFAIL, "ioctl UI_GET_SYSNAME returned wrong name");
+
+	free(path);
 }
 
 void create_device(int fd)
@@ -198,12 +222,14 @@ void create_device(int fd)
 		}
 	};
 
-	SAFE_WRITE(NULL, 1, fd, &uidev, sizeof(uidev));
+	SAFE_WRITE(NULL, SAFE_WRITE_ALL, fd, &uidev, sizeof(uidev));
 	SAFE_IOCTL(NULL, fd, UI_DEV_CREATE, NULL);
 
 	for (nb = 100; nb > 0; nb--) {
-		if (check_device())
+		if (check_device()) {
+			check_ui_get_sysname_ioctl(fd);
 			return;
+		}
 		usleep(10000);
 	}
 
@@ -249,11 +275,8 @@ int check_sync_event(struct input_event *iev)
 int no_events_queued(int fd, int stray_sync_event)
 {
 	struct pollfd fds = {.fd = fd, .events = POLLIN};
-	int ret, res, sync_event_ignored;
+	int ret, res;
 	struct input_event ev;
-
-	if (tst_kvercmp(3, 7, 0) < 0 && stray_sync_event)
-		sync_event_ignored = 1;
 
 	ret = poll(&fds, 1, 30);
 
@@ -261,15 +284,9 @@ int no_events_queued(int fd, int stray_sync_event)
 		res = read(fd, &ev, sizeof(ev));
 
 		if (res == sizeof(ev)) {
-			if (sync_event_ignored && check_sync_event(&ev)) {
-				ret = 0;
-				tst_resm(TINFO,
-					 "Ignoring stray sync event (known problem)");
-			} else {
-				tst_resm(TINFO,
-					 "Unexpected ev type=%i code=%i value=%i",
-					 ev.type, ev.code, ev.value);
-			}
+			tst_resm(TINFO,
+				"Unexpected ev type=%i code=%i value=%i",
+				ev.type, ev.code, ev.value);
 		}
 	}
 

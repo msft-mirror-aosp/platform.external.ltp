@@ -21,6 +21,7 @@
 #include <dirent.h>
 #include <grp.h>
 
+#include "safe_stdio_fn.h"
 #include "safe_macros_fn.h"
 #include "tst_cmd.h"
 
@@ -85,6 +86,12 @@ void *safe_realloc(const char *file, const int lineno, void *ptr, size_t size);
 
 #define SAFE_MUNMAP(addr, length) \
 	safe_munmap(__FILE__, __LINE__, NULL, (addr), (length))
+
+int safe_msync(const char *file, const int lineno, void *addr,
+				size_t length, int flags);
+
+#define SAFE_MSYNC(addr, length, flags) \
+	safe_msync(__FILE__, __LINE__, (addr), (length), (flags))
 
 #define SAFE_OPEN(pathname, oflags, ...) \
 	safe_open(__FILE__, __LINE__, NULL, (pathname), (oflags), \
@@ -185,6 +192,9 @@ int safe_getgroups(const char *file, const int lineno, int size, gid_t list[]);
 
 #define SAFE_STRTOUL(str, min, max) \
 	safe_strtoul(__FILE__, __LINE__, NULL, (str), (min), (max))
+
+#define SAFE_STRTOF(str, min, max) \
+	safe_strtof(__FILE__, __LINE__, NULL, (str), (min), (max))
 
 #define SAFE_SYSCONF(name) \
 	safe_sysconf(__FILE__, __LINE__, NULL, name)
@@ -297,6 +307,23 @@ static inline int safe_ftruncate(const char *file, const int lineno,
 }
 #define SAFE_FTRUNCATE(fd, length) \
 	safe_ftruncate(__FILE__, __LINE__, (fd), (length))
+
+static inline int safe_posix_fadvise(const char *file, const int lineno,
+                                int fd, off_t offset, off_t len, int advice)
+{
+	int rval;
+
+	rval = posix_fadvise(fd, offset, len, advice);
+
+	if (rval)
+		tst_brk_(file, lineno, TBROK,
+			"posix_fadvise(%d,%ld,%ld,%d) failed: %s",
+			fd, (long)offset, (long)len, advice, tst_strerrno(rval));
+
+	return rval;
+}
+#define SAFE_POSIX_FADVISE(fd, offset, len, advice) \
+	safe_posix_fadvise(__FILE__, __LINE__, (fd), (offset), (len), (advice))
 
 static inline int safe_truncate(const char *file, const int lineno,
                                 const char *path, off_t length)
@@ -644,5 +671,7 @@ long tst_safe_ptrace(const char *file, const int lineno, int req, pid_t pid,
 int safe_sysinfo(const char *file, const int lineno, struct sysinfo *info);
 #define SAFE_SYSINFO(info) \
 	safe_sysinfo(__FILE__, __LINE__, (info))
+
+void safe_print_file(const char *file, const int lineno, char *path);
 
 #endif /* SAFE_MACROS_H__ */

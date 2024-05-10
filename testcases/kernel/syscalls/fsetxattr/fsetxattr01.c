@@ -140,7 +140,7 @@ static void verify_fsetxattr(unsigned int i)
 {
 	/* some tests might require existing keys for each iteration */
 	if (tc[i].keyneeded) {
-		SAFE_FSETXATTR(fd, tc[i].key, tc[i].value, tc[i].size,
+		SAFE_FSETXATTR(fd, tc[i].key, *tc[i].value, tc[i].size,
 				XATTR_CREATE);
 	}
 
@@ -205,7 +205,7 @@ static void setup(void)
 	long_value[XATTR_SIZE_MAX + 1] = '\0';
 
 	SAFE_TOUCH(FNAME, 0644, NULL);
-	fd = SAFE_OPEN(FNAME, O_RDONLY, NULL);
+	fd = SAFE_OPEN(FNAME, O_RDONLY);
 
 	for (i = 0; i < ARRAY_SIZE(tc); i++) {
 		if (!tc[i].key)

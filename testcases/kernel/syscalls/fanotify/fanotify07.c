@@ -146,7 +146,7 @@ static void loose_fanotify_events(void)
 			/* Write response to permission event */
 			resp.fd = event.fd;
 			resp.response = FAN_ALLOW;
-			SAFE_WRITE(1, fd_notify, &resp, sizeof(resp));
+			SAFE_WRITE(SAFE_WRITE_ALL, fd_notify, &resp, sizeof(resp));
 		} else {
 			not_responded++;
 		}
@@ -189,10 +189,9 @@ static void test_fanotify(void)
 
 static void setup(void)
 {
-	require_fanotify_access_permissions_supported_by_kernel();
-
 	sprintf(fname, "fname_%d", getpid());
 	SAFE_FILE_PRINTF(fname, "%s", fname);
+	require_fanotify_access_permissions_supported_on_fs(fname);
 }
 
 static void cleanup(void)

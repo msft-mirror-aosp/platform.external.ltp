@@ -31,7 +31,6 @@
 #include <signal.h>
 #include "test.h"
 #include "safe_macros.h"
-#include "fchownat.h"
 #include "lapi/fcntl.h"
 
 #define TESTFILE	"testfile"
@@ -70,9 +69,6 @@ int main(int ac, char **av)
 static void setup(void)
 {
 	struct stat c_buf, l_buf;
-
-	if ((tst_kvercmp(2, 6, 16)) < 0)
-		tst_brkm(TCONF, NULL, "This test needs kernel 2.6.16 or newer");
 
 	tst_require_root();
 

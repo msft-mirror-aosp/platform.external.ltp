@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 
+#ifndef MEMCONTROL_COMMON_H__
+#define MEMCONTROL_COMMON_H__
+
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -31,7 +34,7 @@ static inline void alloc_pagecache(const int fd, size_t size)
 	SAFE_LSEEK(fd, 0, SEEK_END);
 
 	for (i = 0; i < size; i += sizeof(buf))
-		SAFE_WRITE(1, fd, buf, sizeof(buf));
+		SAFE_WRITE(SAFE_WRITE_ALL, fd, buf, sizeof(buf));
 }
 
 static inline void alloc_anon(const size_t size)
@@ -45,3 +48,5 @@ static inline void alloc_anon(const size_t size)
 
 	free(buf);
 }
+
+#endif /* MEMCONTROL_COMMON_H__ */

@@ -28,7 +28,7 @@ static void verify_write(void)
 {
 	char wbuf[8 * page_size];
 
-	TST_EXP_FAIL(write(wfd, wbuf, sizeof(wbuf)), EAGAIN);
+	TST_EXP_FAIL2(write(wfd, wbuf, sizeof(wbuf)), EAGAIN);
 }
 
 static void setup(void)
@@ -44,7 +44,7 @@ static void setup(void)
 	rfd = SAFE_OPEN(fifo, O_RDONLY | O_NONBLOCK);
 	wfd = SAFE_OPEN(fifo, O_WRONLY | O_NONBLOCK);
 
-	SAFE_WRITE(0, wfd, wbuf, sizeof(wbuf));
+	SAFE_WRITE(SAFE_WRITE_ANY, wfd, wbuf, sizeof(wbuf));
 }
 
 static void cleanup(void)

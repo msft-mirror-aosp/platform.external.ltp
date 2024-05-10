@@ -1,4 +1,4 @@
-AC_PREREQ(2.61)
+AC_PREREQ(2.64)
 AC_INIT([ltp], [LTP_VERSION], [ltp@lists.linux.it])
 AC_CONFIG_AUX_DIR([.])
 AM_INIT_AUTOMAKE
@@ -10,7 +10,6 @@ AC_CONFIG_FILES([ \
     include/mk/features.mk \
     lib/ltp.pc \
     m4/Makefile \
-    execltp \
 ])
 
 AC_ARG_VAR(HOSTCC, [The C compiler on the host])
@@ -36,11 +35,13 @@ AC_PREFIX_DEFAULT(/opt/ltp)
 
 AC_CHECK_DECLS([IFLA_NET_NS_PID],,,[#include <linux/if_link.h>])
 AC_CHECK_DECLS([MADV_MERGEABLE],,,[#include <sys/mman.h>])
+AC_CHECK_DECLS([NFTA_CHAIN_ID, NFTA_VERDICT_CHAIN_ID],,,[#include <linux/netfilter/nf_tables.h>])
 AC_CHECK_DECLS([PR_CAPBSET_DROP, PR_CAPBSET_READ],,,[#include <sys/prctl.h>])
 AC_CHECK_DECLS([SEM_STAT_ANY],,,[#include <sys/sem.h>])
 
 AC_CHECK_HEADERS_ONCE([ \
     asm/ldt.h \
+    cpuid.h \
     emmintrin.h \
     ifaddrs.h \
     keyutils.h \
@@ -56,6 +57,7 @@ AC_CHECK_HEADERS_ONCE([ \
     linux/if_ether.h \
     linux/if_packet.h \
     linux/io_uring.h \
+    linux/ioprio.h \
     linux/keyctl.h \
     linux/mempolicy.h \
     linux/module.h \
@@ -64,6 +66,7 @@ AC_CHECK_HEADERS_ONCE([ \
     linux/openat2.h \
     linux/seccomp.h \
     linux/securebits.h \
+    linux/tls.h \
     linux/tty.h \
     linux/types.h \
     linux/userfaultfd.h \
@@ -92,8 +95,8 @@ AC_CHECK_FUNCS_ONCE([ \
     epoll_pwait \
     epoll_pwait2 \
     execveat \
+    faccessat2 \
     fallocate \
-    fchownat \
     fsconfig \
     fsmount \
     fsopen \
@@ -101,6 +104,7 @@ AC_CHECK_FUNCS_ONCE([ \
     fstatat \
     getauxval \
     getcontext \
+    getcpu \
     getdents \
     getdents64 \
     io_pgetevents \
@@ -111,8 +115,6 @@ AC_CHECK_FUNCS_ONCE([ \
     mallinfo \
     mallinfo2 \
     mallopt \
-    mkdirat \
-    mknodat \
     modify_ldt \
     mount_setattr \
     move_mount \
@@ -131,9 +133,7 @@ AC_CHECK_FUNCS_ONCE([ \
     pwritev2 \
     quotactl_fd \
     rand_r \
-    readlinkat \
     recvmmsg \
-    renameat \
     renameat2 \
     sched_getcpu \
     sendmmsg \
@@ -158,7 +158,7 @@ AC_CHECK_FUNCS(mkdtemp,[],AC_MSG_ERROR(mkdtemp() not found!))
 AC_CHECK_MEMBERS([struct fanotify_event_info_fid.fsid.__val],,,[#include <sys/fanotify.h>])
 AC_CHECK_MEMBERS([struct perf_event_mmap_page.aux_head],,,[#include <linux/perf_event.h>])
 AC_CHECK_MEMBERS([struct sigaction.sa_sigaction],[],[],[#include <signal.h>])
-AC_CHECK_MEMBERS([struct statx.stx_mnt_id],,,[
+AC_CHECK_MEMBERS([struct statx.stx_mnt_id, struct statx.stx_dio_mem_align],,,[
 #define _GNU_SOURCE
 #include <sys/stat.h>
 ])
@@ -234,10 +234,10 @@ AC_CHECK_TYPES([struct __kernel_old_timeval, struct __kernel_old_timespec, struc
 
 AC_CHECK_TYPES([struct futex_waitv],,,[#include <linux/futex.h>])
 AC_CHECK_TYPES([struct mount_attr],,,[
-#ifdef HAVE_LINUX_MOUNT_H
-# include <linux/mount.h>
-#else
+#ifdef HAVE_MOUNT_SETATTR
 # include <sys/mount.h>
+#elif HAVE_LINUX_MOUNT_H
+# include <linux/mount.h>
 #endif
 ])
 
@@ -394,7 +394,6 @@ LTP_CHECK_FORTIFY_SOURCE
 LTP_CHECK_KERNEL_DEVEL
 LTP_CHECK_KEYUTILS_SUPPORT
 LTP_CHECK_LIBMNL
-LTP_CHECK_LINUX_PTRACE
 LTP_CHECK_LINUXRANDOM
 LTP_CHECK_NOMMU_LINUX
 LTP_CHECK_SELINUX
@@ -447,13 +446,13 @@ open posix testsuite: ${with_open_posix_testsuite:-no}
 realtime testsuite: ${with_realtime_testsuite:-no}
 
 LIBRARIES
-keyutils: ${have_keyutils:-no}
+keyutils: ${have_keyutils:-yes}
 libacl: ${have_libacl:-no}
 libaio: ${have_libaio:-no} (aio: ${have_aio:-no})
 libcap: $cap_libs (newer: ${has_newer_libcap:-no})
-libcrypto: $have_libcrypto (sha: ${have_sha:-no})
-libmnl: ${have_libmnl:-no}
-libnuma: ${have_libnuma:-no} (headers: ${have_numa_headers:-no}, v2 headers: ${have_numa_headers_v2:-no})
+libcrypto: ${have_libcrypto:-no} (sha: ${have_sha:-no})
+libmnl: ${have_libmnl:-yes}
+libnuma: ${have_libnuma:-no} (headers: ${have_numa_headers:-yes}, v2 headers: ${have_numa_headers_v2:-no})
 libtirpc: ${have_libtirpc:-no}
 glibc SUN-RPC: ${have_rpc_glibc:-no}
 

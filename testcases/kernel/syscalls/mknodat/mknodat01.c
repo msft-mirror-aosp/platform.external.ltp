@@ -35,7 +35,6 @@
 #include "test.h"
 #include "safe_macros.h"
 #include "lapi/fcntl.h"
-#include "mknodat.h"
 
 #define PATHNAME "mknodattestdir"
 
@@ -117,9 +116,6 @@ int main(int ac, char **av)
 static void setup(void)
 {
 	char *tmpdir;
-
-	if (tst_kvercmp(2, 6, 16) < 0)
-		tst_brkm(TCONF, NULL, "This test needs kernel 2.6.16 or newer");
 
 	tst_sig(NOFORK, DEF_HANDLER, cleanup);
 

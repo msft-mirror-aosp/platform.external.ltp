@@ -46,7 +46,6 @@
 #include <errno.h>
 #include <linux/unistd.h>
 
-#include "lapi/mkdirat.h"
 #include "tst_safe_pthread.h"
 #include "tst_safe_stdio.h"
 #include "tst_test.h"
@@ -145,9 +144,9 @@ static void *thread_fn(LTP_ATTRIBUTE_UNUSED void *args)
 			tst_brk(TFAIL | TERRNO, "openat(makefile) failed");
 
 		if (i == dirs_num - 1)
-			SAFE_WRITE(1, fd, make_buf_n, sizeof(make_buf_n) - 1);
+			SAFE_WRITE(SAFE_WRITE_ALL, fd, make_buf_n, sizeof(make_buf_n) - 1);
 		else
-			SAFE_WRITE(1, fd, make_buf, sizeof(make_buf) - 1);
+			SAFE_WRITE(SAFE_WRITE_ALL, fd, make_buf, sizeof(make_buf) - 1);
 
 		SAFE_CLOSE(fd);
 
@@ -160,7 +159,7 @@ static void *thread_fn(LTP_ATTRIBUTE_UNUSED void *args)
 					"openat(%s) failed", cfile);
 			}
 
-			SAFE_WRITE(1, fd, prog_buf, sizeof(prog_buf) - 1);
+			SAFE_WRITE(SAFE_WRITE_ALL, fd, prog_buf, sizeof(prog_buf) - 1);
 			SAFE_CLOSE(fd);
 		}
 

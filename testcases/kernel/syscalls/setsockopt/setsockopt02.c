@@ -96,5 +96,8 @@ static struct tst_test test = {
 	.needs_root = 1,
 	.setup = setup,
 	.cleanup = cleanup,
-	.min_kver = "3.2",
+	.tags = (const struct tst_tag[]) {
+		{"CVE", "2017-7308"},
+		{}
+	}
 };

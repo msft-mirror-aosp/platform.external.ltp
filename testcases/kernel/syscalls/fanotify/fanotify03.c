@@ -133,7 +133,7 @@ static void generate_events(void)
 	 */
 	fd = SAFE_OPEN(fname, O_RDWR | O_CREAT, 0700);
 
-	SAFE_WRITE(0, fd, fname, 1);
+	SAFE_WRITE(SAFE_WRITE_ANY, fd, fname, 1);
 	SAFE_LSEEK(fd, 0, SEEK_SET);
 
 	if (read(fd, buf, BUF_SIZE) != -1)
@@ -295,7 +295,7 @@ static void test_fanotify(unsigned int n)
 
 			resp.fd = event->fd;
 			resp.response = event_set[test_num].response;
-			SAFE_WRITE(1, fd_notify, &resp, sizeof(resp));
+			SAFE_WRITE(SAFE_WRITE_ALL, fd_notify, &resp, sizeof(resp));
 		}
 
 		i += event->event_len;
@@ -320,13 +320,13 @@ static void test_fanotify(unsigned int n)
 
 static void setup(void)
 {
-	require_fanotify_access_permissions_supported_by_kernel();
-
-	filesystem_mark_unsupported = fanotify_mark_supported_by_kernel(FAN_MARK_FILESYSTEM);
-	exec_events_unsupported = fanotify_events_supported_by_kernel(FAN_OPEN_EXEC_PERM,
-								      FAN_CLASS_CONTENT, 0);
 	sprintf(fname, MOUNT_PATH"/fname_%d", getpid());
 	SAFE_FILE_PRINTF(fname, "1");
+
+	require_fanotify_access_permissions_supported_on_fs(fname);
+	filesystem_mark_unsupported = fanotify_mark_supported_on_fs(FAN_MARK_FILESYSTEM, fname);
+	exec_events_unsupported = fanotify_flags_supported_on_fs(FAN_CLASS_CONTENT,
+					0, FAN_OPEN_EXEC_PERM, fname);
 
 	SAFE_CP(TEST_APP, FILE_EXEC_PATH);
 }

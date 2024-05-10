@@ -41,7 +41,7 @@ shmt10 shmt10
 shm_test01	shm_test -l 10 -t 2
 mallocstress01	mallocstress
 
-mmapstress01 mmapstress01 -p 20 -t 0.2
+mmapstress01 mmapstress01
 mmapstress02 mmapstress02
 mmapstress03 mmapstress03
 mmapstress04 mmapstress04
@@ -70,6 +70,7 @@ ksm05 ksm05 -I 10
 ksm06 ksm06
 ksm06_1 ksm06 -n 10
 ksm06_2 ksm06 -n 8000
+ksm07 ksm07
 
 cpuset01 cpuset01
 

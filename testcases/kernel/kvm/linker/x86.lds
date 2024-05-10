@@ -4,6 +4,7 @@ PHDRS
 {
 	headers PT_PHDR PHDRS ;
 	text PT_LOAD FILEHDR PHDRS ;
+	data PT_LOAD ;
 	bss PT_LOAD ;
 }
 
@@ -18,7 +19,7 @@ SECTIONS
 	.init.boot :
 	{
 		*(.init.protected_mode)
-		*(.data.gdt32)
+		*(.init.gdt32)
 		*(.init.memlayout)
 	} :text
 
@@ -40,18 +41,18 @@ SECTIONS
 	{
 		*(.data.strings)
 		*(.data)
-	}
+	} :data
 
 	.preinit_array :
 	{
-		PROVIDE_HIDDEN (__preinit_array_begin = .);
+		PROVIDE_HIDDEN (__preinit_array_start = .);
 		KEEP (*(.preinit_array))
 		PROVIDE_HIDDEN (__preinit_array_end = .);
 	}
 
 	.init_array :
 	{
-		PROVIDE_HIDDEN (__init_array_begin = .);
+		PROVIDE_HIDDEN (__init_array_start = .);
 		KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
 		KEEP (*(.init_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .ctors))
 		PROVIDE_HIDDEN (__init_array_end = .);

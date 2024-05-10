@@ -69,7 +69,7 @@ static struct tcase {
 	int use_overlay;
 	int use_fadvise;
 	/* Use either readahead() syscall or POSIX_FADV_WILLNEED */
-	int (*readahead)(int, off_t, size_t);
+	int (*readahead)(int fd, off_t offset, size_t len);
 } tcases[] = {
 	{ "readahead on file", 0, 0, libc_readahead },
 	{ "readahead on overlayfs file", 1, 0, libc_readahead },
@@ -133,7 +133,7 @@ static void create_testfile(int use_overlay)
 
 	fd = SAFE_CREAT(testfile, 0644);
 	for (i = 0; i < testfile_size; i += pagesize)
-		SAFE_WRITE(1, fd, tmp, pagesize);
+		SAFE_WRITE(SAFE_WRITE_ALL, fd, tmp, pagesize);
 	SAFE_FSYNC(fd);
 	SAFE_CLOSE(fd);
 	free(tmp);
@@ -223,8 +223,7 @@ static void test_readahead(unsigned int n)
 	tst_res(TINFO, "Test #%d: %s", n, tc->tname);
 
 	if (tc->use_overlay && !ovl_mounted) {
-		tst_res(TCONF,
-		        "overlayfs is not configured in this kernel.");
+		tst_res(TCONF, "overlayfs is not configured in this kernel");
 		return;
 	}
 
@@ -252,7 +251,7 @@ static void test_readahead(unsigned int n)
 	cached_low = get_cached_size();
 	tst_res(TINFO, "read_testfile(1)");
 	ret = read_testfile(tc, 1, testfile, testfile_size, &read_bytes_ra,
-		            &usec_ra, &cached_ra);
+			    &usec_ra, &cached_ra);
 
 	if (ret == EINVAL) {
 		if (tc->use_fadvise &&
@@ -319,6 +318,19 @@ static void test_readahead(unsigned int n)
 		tst_res(TCONF, "Page cache on your system is too small "
 			"to hold whole testfile.");
 	}
+
+	/*
+	 * The time consuming of readahead quite depending on the platform IO
+	 * speed, sometime test timeout when the default max_runtime is used up.
+	 *
+	 *  readahead02.c:221: TINFO: Test #2: POSIX_FADV_WILLNEED on file
+	 *  readahead02.c:285: TINFO: read_testfile(0) took: 26317623 usec
+	 *  readahead02.c:286: TINFO: read_testfile(1) took: 26101484 usec
+	 *
+	 * Here raise the maximum runtime dynamically.
+	 */
+	if ((tc+1)->readahead)
+		tst_set_max_runtime(test.max_runtime + (usec + usec_ra) / 1000000);
 }
 
 
@@ -353,7 +365,7 @@ static void setup_readahead_length(void)
 	/* raise bdi limit as much as kernel allows */
 	ra_new_limit = testfile_size / 1024;
 	while (ra_new_limit > pagesize / 1024) {
-		FILE_PRINTF(sys_bdi_ra_path, "%d", ra_new_limit);
+		SAFE_FILE_PRINTF(sys_bdi_ra_path, "%d", ra_new_limit);
 		SAFE_FILE_SCANF(sys_bdi_ra_path, "%d", &ra_limit);
 
 		if (ra_limit == ra_new_limit) {

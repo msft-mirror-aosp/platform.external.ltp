@@ -104,7 +104,7 @@ void setup(void)
 	if ((fd = mkstemp(template)) == -1)
 		tst_resm(TFAIL | TERRNO, "mkstemp failed");
 
-	SAFE_WRITE(cleanup, 0, fd, buf, STRINGSIZE);
+	SAFE_WRITE(cleanup, SAFE_WRITE_ANY, fd, buf, STRINGSIZE);
 
 	memset(&act, 0, sizeof(act));
 	act.sa_handler = catch_child;
@@ -214,11 +214,11 @@ char *str_type(int type)
 	static char buf[20];
 
 	switch (type) {
-	case 1:
+	case F_RDLCK:
 		return ("F_RDLCK");
-	case 2:
+	case F_WRLCK:
 		return ("F_WRLCK");
-	case 3:
+	case F_UNLCK:
 		return ("F_UNLCK");
 	default:
 		sprintf(buf, "BAD VALUE: %d", type);

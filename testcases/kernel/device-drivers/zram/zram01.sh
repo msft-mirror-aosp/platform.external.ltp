@@ -82,7 +82,9 @@ zram_makefs()
 		mkfs.$fs /dev/zram$i > err.log 2>&1
 		if [ $? -ne 0 ]; then
 			cat err.log
-			tst_brk TFAIL "failed to make $fs on /dev/zram$i"
+			tst_res TFAIL "Failed to make $fs on /dev/zram$i"
+			tst_brk TBROK "Can't continue with mounting the FS"
+			return
 		fi
 
 		i=$(($i + 1))
@@ -93,7 +95,7 @@ zram_makefs()
 
 zram_mount()
 {
-	local i=0
+	local i
 
 	for i in $(seq $dev_start $dev_end); do
 		tst_res TINFO "mount /dev/zram$i"
@@ -105,11 +107,34 @@ zram_mount()
 	tst_res TPASS "mount of zram device(s) succeeded"
 }
 
+read_mem_used_total()
+{
+	echo $(awk '{print $3}' $1)
+}
+
+# Reads /sys/block/zram*/mm_stat until mem_used_total is not 0.
+check_read_mem_used_total()
+{
+	local file="$1"
+	local mem_used_total
+
+	tst_res TINFO "$file"
+	cat $file >&2
+
+	mem_used_total=$(read_mem_used_total $file)
+	[ "$mem_used_total" -eq 0 ] && return 1
+
+	return 0
+}
+
 zram_fill_fs()
 {
+	local mem_used_total
+	local b i r v
+
 	for i in $(seq $dev_start $dev_end); do
 		tst_res TINFO "filling zram$i (it can take long time)"
-		local b=0
+		b=0
 		while true; do
 			dd conv=notrunc if=/dev/zero of=zram${i}/file \
 				oflag=append count=1 bs=1024 status=none \
@@ -130,9 +155,12 @@ zram_fill_fs()
 			continue
 		fi
 
-		local mem_used_total=`awk '{print $3}' "/sys/block/zram$i/mm_stat"`
-		local v=$((100 * 1024 * $b / $mem_used_total))
-		local r=`echo "scale=2; $v / 100 " | bc`
+		TST_RETRY_FUNC "check_read_mem_used_total /sys/block/zram$i/mm_stat" 0
+		mem_used_total=$(read_mem_used_total /sys/block/zram$i/mm_stat)
+		tst_res TINFO "mem_used_total: $mem_used_total"
+
+		v=$((100 * 1024 * $b / $mem_used_total))
+		r=$(echo "scale=2; $v / 100 " | bc)
 
 		if [ "$v" -lt 100 ]; then
 			tst_res TFAIL "compression ratio: $r:1"

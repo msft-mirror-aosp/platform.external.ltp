@@ -38,6 +38,8 @@ static void run_all(unsigned int n)
 
 static void setup(void)
 {
+	epoll_pwait2_supported();
+
 	SAFE_SOCKETPAIR(AF_UNIX, SOCK_STREAM, 0, sfd);
 
 	efd = epoll_create(1);
@@ -46,8 +48,8 @@ static void setup(void)
 
 	e.events = EPOLLIN;
 	if (epoll_ctl(efd, EPOLL_CTL_ADD, sfd[0], &e))
-		tst_brk(TBROK | TERRNO, "epoll_clt(..., EPOLL_CTL_ADD, ...)");
-	SAFE_WRITE(1, sfd[1], "w", 1);
+		tst_brk(TBROK | TERRNO, "epoll_ctl(..., EPOLL_CTL_ADD, ...)");
+	SAFE_WRITE(SAFE_WRITE_ALL, sfd[1], "w", 1);
 }
 
 static void cleanup(void)
