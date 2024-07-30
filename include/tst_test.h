@@ -467,6 +467,9 @@ struct tst_ulimit_val {
  *
  * @needs_cgroup_ctrls: A {} terminated array of cgroup controllers the test
  *                      needs to run.
+ *
+ * @needs_cgroup_nsdelegate: If set test the will run only if cgroup2 is mounted
+ *                           with nsdelegate option.
  */
 
  struct tst_test {
@@ -555,6 +558,8 @@ struct tst_ulimit_val {
 	const enum tst_cg_ver needs_cgroup_ver;
 
 	const char *const *needs_cgroup_ctrls;
+
+	int needs_cgroup_nsdelegate:1;
 };
 
 /**
