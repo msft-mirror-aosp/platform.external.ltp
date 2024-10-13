@@ -20,12 +20,20 @@ static inline size_t kernel_page_size(void)
 {
     return 0x1000;
 }
-#else
+
+/* Handle upto MAX_PAGE_SIZE emulation on 4KiB kernel base page size system */
+#define DECLARE_MINCORE_VECTOR(vec_name, num_pages) \
+    unsigned char vec_name[(num_pages) * (MAX_PAGE_SIZE / 4096)]
+
+#else	/* !defined(__x86_64__) */
+
 static inline size_t kernel_page_size(void)
 {
 	return getpagesize();
 }
-#endif
+
+#define DECLARE_MINCORE_VECTOR(vec_name, num_pages) unsigned char vec_name[(num_pages)]
+#endif  /* defined(__x86_64__) */
 
 /*
  * NOTE: For all cases except Android x86_64 page size emulators,
@@ -51,4 +59,18 @@ static size_t nr_kernel_pgs_to_nr_pgs(size_t nr_pages)
     return nr_pages / nr_kernel_pages(getpagesize());
 }
 
+/*
+ * Test populating the last partial 4KiB page if the page size is emulated,
+ * instead of the first. This faults in the preceding pages for convenient
+ * test accounting.
+ */
+#define MLOCK_PAGE_SIZE_EMULATION_OFFSET(tcases)                                            \
+do {                                                                                        \
+    if (getpagesize() != kernel_page_size()) {                                              \
+        for (int i = 0; i < ARRAY_SIZE(tcases); i++) {                                      \
+            struct tcase *test = tcases + i;                                                \
+            if (test->offset > 0) test->offset = pgsz - kernel_page_size() + test->offset;  \
+        }                                                                                   \
+    }                                                                                       \
+} while (0)
 #endif /* PGSIZE_HELPER_H */
