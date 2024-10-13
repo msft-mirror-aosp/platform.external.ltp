@@ -9,6 +9,8 @@
 
 #include <unistd.h>
 
+#define MAX_PAGE_SIZE (64*1024)
+
 #if defined(__x86_64__)
 /*
  * Android emulates the userspace page size on some x86_64 emulators.
