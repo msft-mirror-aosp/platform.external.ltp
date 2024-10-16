@@ -7,6 +7,8 @@
 #ifndef PGSIZE_HELPER_H
 #define PGSIZE_HELPER_H
 
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #define MAX_PAGE_SIZE (64*1024)
@@ -72,5 +74,29 @@ do {                                                                            
             if (test->offset > 0) test->offset = pgsz - kernel_page_size() + test->offset;  \
         }                                                                                   \
     }                                                                                       \
+} while (0)
+
+/*
+ * Make the backing file large enough to cover the last corresponding kernel page.
+ *
+ * This is an artifact of x86_64 page size emulation on Android, to handle
+ * file_map_fault's, which does allow access to the partial page after the end
+ * of the file.
+ */
+#define SAFE_FILE_PRINTF_PGSIZE_EMULATION(file, str)                            \
+do {                                                                            \
+    if (kernel_page_size() == getpagesize()) {                                  \
+        SAFE_FILE_PRINTF(file, str);                                            \
+    } else {                                                                    \
+        int str_len = strlen(str);                                              \
+        int nr_writes = ((kernel_page_size()                                    \
+                            * (nr_pgs_to_nr_kernel_pgs(1) - 1)) / str_len) + 1; \
+        int total_len = str_len * nr_writes;                                    \
+        char *buffer = SAFE_MALLOC(total_len + 1);                              \
+        for (int i = 0; i < nr_writes; i++)                                     \
+            strcat(buffer, str);                                                \
+        SAFE_FILE_PRINTF(file, buffer);                                         \
+        free(buffer);                                                           \
+    }                                                                           \
 } while (0)
 #endif /* PGSIZE_HELPER_H */
