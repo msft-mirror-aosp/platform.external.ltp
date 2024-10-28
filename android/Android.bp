@@ -2747,10 +2747,38 @@ genrule {
 }
 
 genrule {
+    name: "ltp_config_arm_64_lowmem",
+    out: ["vts_ltp_test_arm_64_lowmem.xml"],
+    tools: ["gen_ltp_config"],
+    cmd: "$(location gen_ltp_config) --arch arm --bitness 64 --low-mem True --hwasan False $(out)",
+}
+
+genrule {
+    name: "ltp_config_arm_64_hwasan",
+    out: ["vts_ltp_test_arm_64_hwasan.xml"],
+    tools: ["gen_ltp_config"],
+    cmd: "$(location gen_ltp_config) --arch arm --bitness 64 --low-mem False --hwasan True $(out)",
+}
+
+genrule {
+    name: "ltp_config_arm_64_lowmem_hwasan",
+    out: ["vts_ltp_test_arm_64_lowmem_hwasan.xml"],
+    tools: ["gen_ltp_config"],
+    cmd: "$(location gen_ltp_config) --arch arm --bitness 64 --low-mem True --hwasan True $(out)",
+}
+
+genrule {
     name: "ltp_config_arm",
     out: ["vts_ltp_test_arm.xml"],
     tools: ["gen_ltp_config"],
     cmd: "$(location gen_ltp_config) --arch arm --bitness 32 --low-mem False --hwasan False $(out)",
+}
+
+genrule {
+    name: "ltp_config_arm_lowmem",
+    out: ["vts_ltp_test_arm_lowmem.xml"],
+    tools: ["gen_ltp_config"],
+    cmd: "$(location gen_ltp_config) --arch arm --bitness 32 --low-mem True --hwasan False $(out)",
 }
 
 genrule {
@@ -2777,7 +2805,7 @@ genrule {
 sh_test {
     name: "vts_ltp_test_arm_64",
     src: "empty.sh",
-    test_config_template: ":ltp_config_arm_64",
+    test_config: ":ltp_config_arm_64",
     test_suites: [
         "general-tests",
         "vts",
@@ -2788,13 +2816,18 @@ sh_test {
             enabled: true,
         },
     },
+    extra_test_configs: [
+        ":ltp_config_arm_64_lowmem",
+        ":ltp_config_arm_64_hwasan",
+        ":ltp_config_arm_64_lowmem_hwasan",
+    ],
     data: LTP_TESTS,
 }
 
 sh_test {
     name: "vts_ltp_test_arm",
     src: "empty.sh",
-    test_config_template: ":ltp_config_arm",
+    test_config: ":ltp_config_arm",
     test_suites: [
         "general-tests",
         "vts",
@@ -2809,13 +2842,16 @@ sh_test {
             enabled: true,
         },
     },
+    extra_test_configs: [
+        ":ltp_config_arm_lowmem",
+    ],
     data: LTP_TESTS,
 }
 
 sh_test {
     name: "vts_ltp_test_riscv_64",
     src: "empty.sh",
-    test_config_template: ":ltp_config_riscv_64",
+    test_config: ":ltp_config_riscv_64",
     test_suites: [
         "general-tests",
         "vts",
@@ -2832,7 +2868,7 @@ sh_test {
 sh_test {
     name: "vts_ltp_test_x86_64",
     src: "empty.sh",
-    test_config_template: ":ltp_config_x86_64",
+    test_config: ":ltp_config_x86_64",
     test_suites: [
         "general-tests",
         "vts",
@@ -2849,7 +2885,7 @@ sh_test {
 sh_test {
     name: "vts_ltp_test_x86",
     src: "empty.sh",
-    test_config_template: ":ltp_config_x86",
+    test_config: ":ltp_config_x86",
     test_suites: [
         "general-tests",
         "vts",
