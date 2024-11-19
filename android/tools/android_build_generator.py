@@ -39,64 +39,28 @@ TARGET_LIST = [
     {
         "arch": "arm",
         "bitness": "64",
-        "low_mem": False,
-        "hwasan": False,
+        "extra_test_configs": ["lowmem", "hwasan", "lowmem_hwasan"],
         "targets": ["arm64"],
     },
-#    {
-#        "arch": "arm",
-#        "bitness": "64",
-#        "low_mem": True,
-#        "hwasan": False,
-#        "targets": ["arm64"],
-#    },
-#    {
-#        "arch": "arm",
-#        "bitness": "64",
-#        "low_mem": False,
-#        "hwasan": True,
-#        "targets": ["arm64"],
-#    },
-#    {
-#        "arch": "arm",
-#        "bitness": "64",
-#        "low_mem": True,
-#        "hwasan": True,
-#        "targets": ["arm64"],
-#    },
     {
         "arch": "arm",
         "bitness": "32",
-        "low_mem": False,
-        "hwasan": False,
+        "extra_test_configs": ["lowmem"],
         "targets": ["arm", "arm64"],
     },
-#    {
-#        "arch": "arm",
-#        "bitness": "32",
-#        "low_mem": True,
-#        "hwasan": False,
-#        "targets": ["arm", "arm64"],
-#    },
     {
         "arch": "riscv",
         "bitness": "64",
-        "low_mem": False,
-        "hwasan": False,
         "targets": ["riscv64"],
     },
     {
         "arch": "x86",
         "bitness": "64",
-        "low_mem": False,
-        "hwasan": False,
         "targets": ["x86_64"],
     },
     {
         "arch": "x86",
         "bitness": "32",
-        "low_mem": False,
-        "hwasan": False,
         "targets": ["x86", "x86_64"],
     },
 ]
@@ -566,28 +530,42 @@ class BuildGenerator(object):
             f.write('\n'.join(bp_result))
             f.write('\n')
 
-    def ArchString(self, arch, bitness, low_mem, hwasan):
+    def ArchString(self, arch, bitness, lowmem=False, hwasan=False):
         if bitness == '32':
             arch_string = arch
         else:
             arch_string = f'{arch}_{bitness}'
-        if low_mem:
+        if lowmem:
             arch_string += '_lowmem'
         if hwasan:
             arch_string += '_hwasan'
         return arch_string
 
-    def BuildConfigGenrule(self, arch, bitness, low_mem, hwasan, targets):
+    def BuildConfigGenrule(self, arch, bitness, targets, extra_test_configs=None):
+        extra_test_configs = extra_test_configs if extra_test_configs else []
         bp_result = []
-        arch_string = self.ArchString(arch, bitness, low_mem, hwasan)
+        arch_string = self.ArchString(arch, bitness)
 
         bp_result.append('')
         bp_result.append('genrule {')
         bp_result.append('    name: "ltp_config_%s",' % arch_string)
         bp_result.append('    out: ["vts_ltp_test_%s.xml"],' % arch_string)
         bp_result.append('    tools: ["gen_ltp_config"],')
-        bp_result.append('    cmd: "$(location gen_ltp_config) --arch %s --bitness %s --low-mem %r --hwasan %r $(out)",' % (arch, bitness, low_mem, hwasan))
+        bp_result.append('    cmd: "$(location gen_ltp_config) --arch %s --bitness %s --low-mem %r --hwasan %r $(out)",' % (arch, bitness, lowmem, hwasan))
         bp_result.append('}')
+
+        for config in extra_test_configs:
+            lowmem = 'lowmem' in config
+            hwasan = 'hwasan' in config
+            arch_string = self.ArchString(arch, bitness, lowmem, hwasan)
+
+            bp_result.append('')
+            bp_result.append('genrule {')
+            bp_result.append('    name: "ltp_config_%s",' % arch_string)
+            bp_result.append('    out: ["vts_ltp_test_%s.xml"],' % arch_string)
+            bp_result.append('    tools: ["gen_ltp_config"],')
+            bp_result.append('    cmd: "$(location gen_ltp_config) --arch %s --bitness %s --low-mem %r --hwasan %r $(out)",' % (arch, bitness, lowmem, hwasan))
+            bp_result.append('}')
         return bp_result
 
     def BuildPackageList(self):
@@ -600,15 +578,16 @@ class BuildGenerator(object):
         bp_result.append(']')
         return bp_result
 
-    def BuildLTPTestSuite(self, arch, bitness, low_mem, hwasan, targets):
+    def BuildLTPTestSuite(self, arch, bitness, targets, extra_test_configs=None):
+        extra_test_configs = extra_test_configs if extra_test_configs else []
         bp_result = []
-        arch_string = self.ArchString(arch, bitness, low_mem, hwasan)
+        arch_string = self.ArchString(arch, bitness)
 
         bp_result.append('')
         bp_result.append('sh_test {')
         bp_result.append('    name: "vts_ltp_test_%s",' % arch_string)
         bp_result.append('    src: "empty.sh",')
-        bp_result.append('    test_config_template: ":ltp_config_%s",' % arch_string)
+        bp_result.append('    test_config: ":ltp_config_%s",' % arch_string)
         bp_result.append('    test_suites: [')
         bp_result.append('        "general-tests",')
         bp_result.append('        "vts",')
@@ -624,6 +603,15 @@ class BuildGenerator(object):
             bp_result.append('            enabled: true,')
             bp_result.append('        },')
         bp_result.append('    },')
+
+        if extra_test_configs:
+            bp_result.append('    extra_test_configs: [')
+            for config in extra_test_configs:
+                lowmem = 'lowmem' in config
+                hwasan = 'hwasan' in config
+                arch_string = self.ArchString(arch, bitness, lowmem, hwasan)
+                bp_result.append('        ":ltp_config_%s",' % arch_string)
+            bp_result.append('    ],')
 
         bp_result.append('    data: LTP_TESTS,')
         bp_result.append('}')
