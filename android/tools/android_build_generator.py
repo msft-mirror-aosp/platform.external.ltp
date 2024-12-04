@@ -551,7 +551,7 @@ class BuildGenerator(object):
         bp_result.append('    name: "ltp_config_%s",' % arch_string)
         bp_result.append('    out: ["vts_ltp_test_%s.xml"],' % arch_string)
         bp_result.append('    tools: ["gen_ltp_config"],')
-        bp_result.append('    cmd: "$(location gen_ltp_config) --arch %s --bitness %s --low-mem %r --hwasan %r $(out)",' % (arch, bitness, lowmem, hwasan))
+        bp_result.append('    cmd: "$(location gen_ltp_config) --arch %s --bitness %s $(out)",' % (arch, bitness))
         bp_result.append('}')
 
         for config in extra_test_configs:
