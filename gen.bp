@@ -957,15 +957,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_cachestat02",
-    stem: "cachestat02",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["testcases/kernel/syscalls/cachestat/cachestat02.c"],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
     name: "ltp_cachestat03",
     stem: "cachestat03",
     defaults: ["ltp_test_defaults"],
@@ -14726,19 +14717,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_sbrk_mutex",
-    stem: "sbrk_mutex",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["testcases/realtime/func/pi-tests/sbrk_mutex.c"],
-    cflags: ["-D_GNU_SOURCE"],
-    local_include_dirs: [
-        "include/old",
-        "testcases/realtime/include",
-    ],
-    static_libs: ["libltp_realtime"],
-}
-
-cc_test {
     name: "ltp_sched_boost",
     stem: "sched_boost",
     defaults: ["ltp_test_defaults"],
@@ -25484,19 +25462,6 @@ sh_test {
 }
 
 cc_test {
-    name: "ltp_testpi-0",
-    stem: "testpi-0",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["testcases/realtime/func/pi-tests/testpi-0.c"],
-    cflags: ["-D_GNU_SOURCE"],
-    local_include_dirs: [
-        "include/old",
-        "testcases/realtime/include",
-    ],
-    static_libs: ["libltp_realtime"],
-}
-
-cc_test {
     name: "ltp_testpi-1",
     stem: "testpi-1",
     defaults: ["ltp_test_defaults"],
@@ -25553,19 +25518,6 @@ cc_test {
     stem: "testpi-5",
     defaults: ["ltp_test_defaults"],
     srcs: ["testcases/realtime/func/pi-tests/testpi-5.c"],
-    cflags: ["-D_GNU_SOURCE"],
-    local_include_dirs: [
-        "include/old",
-        "testcases/realtime/include",
-    ],
-    static_libs: ["libltp_realtime"],
-}
-
-cc_test {
-    name: "ltp_testpi-6",
-    stem: "testpi-6",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["testcases/realtime/func/pi-tests/testpi-6.c"],
     cflags: ["-D_GNU_SOURCE"],
     local_include_dirs: [
         "include/old",
