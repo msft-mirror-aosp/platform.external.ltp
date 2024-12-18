@@ -636,3 +636,8 @@ hugemmap15
 testpi-0
 testpi-6
 sbrk_mutex
+
+# TSC unsupported
+async_handler_tsc
+preempt_timing
+rdtsc-latency
