@@ -302,8 +302,7 @@ class BuildGenerator(object):
         bp_result.append('    auto_gen_config: false,')
         bp_result.append('}')
 
-        self._prebuilt_bp_result[base_name] = bp_result
-        self._packages.append(module)
+        self._prebuilt_bp_result[module] = bp_result
 
     def HandleParsedRule(self, line, rules):
         '''Prepare parse rules.
