@@ -720,19 +720,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_async_handler_tsc",
-    stem: "async_handler_tsc",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["testcases/realtime/func/async_handler/async_handler_tsc.c"],
-    cflags: ["-D_GNU_SOURCE"],
-    local_include_dirs: [
-        "include/old",
-        "testcases/realtime/include",
-    ],
-    static_libs: ["libltp_realtime"],
-}
-
-cc_test {
     name: "ltp_atof01",
     stem: "atof01",
     defaults: ["ltp_test_defaults"],
@@ -13240,19 +13227,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_preempt_timing",
-    stem: "preempt_timing",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["testcases/realtime/func/measurement/preempt_timing.c"],
-    cflags: ["-D_GNU_SOURCE"],
-    local_include_dirs: [
-        "include/old",
-        "testcases/realtime/include",
-    ],
-    static_libs: ["libltp_realtime"],
-}
-
-cc_test {
     name: "ltp_print_caps",
     stem: "print_caps",
     defaults: ["ltp_test_defaults"],
@@ -14053,19 +14027,6 @@ cc_test {
     srcs: ["testcases/kernel/syscalls/quotactl/quotactl09.c"],
     local_include_dirs: ["include/old"],
     static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_rdtsc-latency",
-    stem: "rdtsc-latency",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["testcases/realtime/func/measurement/rdtsc-latency.c"],
-    cflags: ["-D_GNU_SOURCE"],
-    local_include_dirs: [
-        "include/old",
-        "testcases/realtime/include",
-    ],
-    static_libs: ["libltp_realtime"],
 }
 
 cc_test {
