@@ -51,7 +51,7 @@ static struct test_case {
 } test_cases[] = {
 	{&unused_pid, &attr_copy, sizeof(struct sched_attr), 0, ESRCH},
 	{&pid, NULL, sizeof(struct sched_attr), 0, EINVAL},
-	{&pid, &attr_copy, sizeof(struct sched_attr) - 1, 0, EINVAL},
+	{&pid, &attr_copy, SCHED_ATTR_SIZE_VER0 - 1, 0, EINVAL},
 	{&pid, &attr_copy, sizeof(struct sched_attr), 1000, EINVAL}
 };
 
@@ -100,9 +100,6 @@ int main(int argc, char **argv)
 void setup(void)
 {
 	unused_pid = tst_get_unused_pid(setup);
-
-	if ((tst_kvercmp(3, 14, 0)) < 0)
-		tst_brkm(TCONF, NULL, "EDF needs kernel 3.14 or higher");
 
 	TEST_PAUSE;
 }
