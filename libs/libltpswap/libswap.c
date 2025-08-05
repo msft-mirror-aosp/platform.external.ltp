@@ -3,7 +3,7 @@
  * Copyright (c) 2013 Oracle and/or its affiliates. All Rights Reserved.
  * Author: Stanislav Kholmanskikh <stanislav.kholmanskikh@oracle.com>
  */
-
+#include <linux/fs.h>
 #include <errno.h>
 
 #define TST_NO_DEFAULT_MAIN
@@ -49,6 +49,23 @@ void is_swap_supported(const char *filename)
 			tst_brk(TCONF, "mkswap on %s not supported", fstype);
 		else
 			tst_brk(TFAIL, "mkswap on %s failed", fstype);
+	}
+
+	if (fs_type == TST_F2FS_MAGIC) {
+		int attrs;
+		int fd = SAFE_OPEN(filename, O_RDONLY);
+		SAFE_IOCTL(fd, FS_IOC_GETFLAGS, &attrs);
+		SAFE_CLOSE(fd);
+
+		if (attrs & FS_COMPR_FL) {
+			/*
+			 * LTP will report 100% skip rate as TCONF, which is a non-zero exit
+			 * code. To suppress this behavior for these tests, mark the test as
+			 * both passed and as broken.
+			 */
+			tst_res(TPASS, "Skipping swap test with F2FS");
+			tst_brk(TCONF, "Swapfile on F2FS with compression is not supported");
+		}
 	}
 
 	TEST(tst_syscall(__NR_swapon, filename, 0));
