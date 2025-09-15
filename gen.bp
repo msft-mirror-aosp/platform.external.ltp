@@ -153,6 +153,7 @@ cc_library_static {
         "lib/tst_sys_conf.c",
         "lib/tst_taint.c",
         "lib/tst_test.c",
+        "lib/tst_test_macros.c",
         "lib/tst_thread_state.c",
         "lib/tst_timer.c",
         "lib/tst_timer_test.c",
