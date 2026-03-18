@@ -26452,15 +26452,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_tst_checkpoint",
-    stem: "tst_checkpoint",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["lib/newlib_tests/tst_checkpoint.c"],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
     name: "ltp_tst_checkpoint_child",
     stem: "tst_checkpoint_child",
     defaults: ["ltp_test_defaults"],
@@ -26528,15 +26519,6 @@ cc_test {
     stem: "tst_dataroot03",
     defaults: ["ltp_test_defaults"],
     srcs: ["lib/tests/tst_dataroot03.c"],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_tst_device",
-    stem: "tst_device",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["lib/newlib_tests/tst_device.c"],
     local_include_dirs: ["include/old"],
     static_libs: ["libltp_ltp"],
 }
