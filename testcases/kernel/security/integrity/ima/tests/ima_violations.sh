@@ -8,6 +8,7 @@
 # test[4-6] test 6.15 commit 5b3cd801155f ("ima: limit the number of open-writers integrity violations")
 # test[7-8] test 6.15 commit a414016218ca ("ima: limit the number of ToMToU integrity violations")
 
+TST_NEEDS_CHECKPOINTS=1
 TST_SETUP="setup"
 TST_CLEANUP="cleanup"
 TST_CNT=8
@@ -157,6 +158,8 @@ test2()
 
 test3()
 {
+	local pid
+
 	tst_res TINFO "verify open_writers using mmapped files"
 
 	local search="open_writers"
@@ -167,17 +170,145 @@ test3()
 
 	echo 'testing testing' > $FILE
 
-	ima_mmap -f $FILE &
-	# wait for violations appear in logs
-	tst_sleep 1s
+	ima_mmap $FILE &
+	pid=$!
+
+	TST_CHECKPOINT_WAIT 0
 
 	open_file_read
 	close_file_read
 
+	TST_CHECKPOINT_WAKE 0
+
 	validate $num_violations $count $search
 
 	# wait for ima_mmap to exit, so we can umount
-	tst_sleep 2s
+	wait $pid
+	if [ $? -ne 0 ]; then
+		tst_brk TBROK "failed to execute ima_mmap"
+	fi
+}
+
+test4()
+{
+	tst_res TINFO "verify limiting single open writer violation"
+
+	if tst_kvcmp -lt 6.15; then
+		tst_brk TCONF "Minimizing violations requires kernel 6.15 or newer"
+	fi
+
+	local search="open_writers"
+	local count num_violations
+
+	read num_violations < $IMA_VIOLATIONS
+	count="$(get_count $search)"
+
+	open_file_write
+	open_file_read
+	close_file_read
+
+	open_file_read
+	close_file_read
+
+	close_file_write
+
+	validate "$num_violations" "$count" "$search" 1
+}
+
+test5()
+{
+	tst_res TINFO "verify limiting multiple open writers violations"
+
+	local search="open_writers"
+	local count num_violations
+
+	read num_violations < $IMA_VIOLATIONS
+	count="$(get_count $search)"
+
+	open_file_write
+	open_file_read
+	close_file_read
+
+	open_file_write2
+	open_file_read
+	close_file_read
+	close_file_write2
+
+	open_file_read
+	close_file_read
+
+	close_file_write
+
+	validate "$num_violations" "$count" "$search" 1
+}
+
+test6()
+{
+	tst_res TINFO "verify new open writer causes additional violation"
+
+	local search="open_writers"
+	local count num_violations
+
+	read num_violations < $IMA_VIOLATIONS
+	count="$(get_count $search)"
+
+	open_file_write
+	open_file_read
+	close_file_read
+
+	open_file_read
+	close_file_read
+	close_file_write
+
+	open_file_write
+	open_file_read
+	close_file_read
+	close_file_write
+	validate "$num_violations" "$count" "$search" 2
+}
+
+test7()
+{
+	tst_res TINFO "verify limiting single open reader ToMToU violations"
+
+	local search="ToMToU"
+	local count num_violations
+
+	read num_violations < $IMA_VIOLATIONS
+	count="$(get_count $search)"
+
+	open_file_read
+	open_file_write
+	close_file_write
+
+	open_file_write
+	close_file_write
+	close_file_read
+
+	validate "$num_violations" "$count" "$search" 1
+}
+
+test8()
+{
+	tst_res TINFO "verify new open reader causes additional violation"
+
+	local search="ToMToU"
+	local count num_violations
+
+	read num_violations < $IMA_VIOLATIONS
+	count="$(get_count $search)"
+
+	open_file_read
+	open_file_write
+	close_file_write
+	close_file_read
+
+	open_file_read
+	open_file_write
+	close_file_write
+	close_file_read
+
+	validate "$num_violations" "$count" "$search" 2
 }
 
 test4()

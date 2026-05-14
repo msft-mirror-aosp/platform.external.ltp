@@ -22,8 +22,9 @@
 #include <stdio.h>
 #include <pwd.h>
 #include "tst_test.h"
+#include "tst_safe_stdio.h"
 #include "tst_safe_sysv_ipc.h"
-#include "libnewipc.h"
+#include "tse_newipc.h"
 #include "lapi/shm.h"
 
 #define SHM_SIZE 2048
@@ -42,7 +43,7 @@ static struct tcases {
 static void parse_proc_sysvipc(struct shm_info *info)
 {
 	int page_size = getpagesize();
-	FILE *f = fopen("/proc/sysvipc/shm", "r");
+	FILE *f = SAFE_FOPEN("/proc/sysvipc/shm", "r");
 	int used_ids = 0;
 	int shmid_max = 0;
 	unsigned long shm_rss = 0;
@@ -57,7 +58,8 @@ static void parse_proc_sysvipc(struct shm_info *info)
 			break;
 	}
 
-	int shmid, size, rss, swap;
+	int shmid, rss, swap;
+	unsigned long size;
 
 	/*
 	 * Sum rss, swap and size for all elements listed, which should equal
@@ -66,8 +68,8 @@ static void parse_proc_sysvipc(struct shm_info *info)
 	 * Note that the size has to be rounded up to nearest multiple of page
 	 * size.
 	 */
-	while (fscanf(f, "%*i %i %*i %i %*i %*i %*i %*i %*i %*i %*i %*i %*i %*i %i %i",
-			&shmid, &size, &rss, &swap) > 0) {
+	while (fscanf(f, "%*i %i %*i %lu %*i %*i %*i %*i %*i %*i %*i %*i %*i %*i %i %i",
+			&shmid, &size, &rss, &swap) == 4) {
 		used_ids++;
 		shm_rss += rss/page_size;
 		shm_swp += swap/page_size;
@@ -84,27 +86,27 @@ static void parse_proc_sysvipc(struct shm_info *info)
 	}
 
 	if (info->shm_rss != shm_rss) {
-		tst_res(TFAIL, "shm_rss = %li, expected %li",
+		tst_res(TFAIL, "shm_rss = %lu, expected %lu",
 			info->shm_rss, shm_rss);
 	} else {
-		tst_res(TPASS, "shm_rss = %li", shm_rss);
+		tst_res(TPASS, "shm_rss = %lu", shm_rss);
 	}
 
 	if (info->shm_swp != shm_swp) {
-		tst_res(TFAIL, "shm_swp = %li, expected %li",
+		tst_res(TFAIL, "shm_swp = %lu, expected %lu",
 			info->shm_swp, shm_swp);
 	} else {
-		tst_res(TPASS, "shm_swp = %li", shm_swp);
+		tst_res(TPASS, "shm_swp = %lu", shm_swp);
 	}
 
 	if (info->shm_tot != shm_tot) {
-		tst_res(TFAIL, "shm_tot = %li, expected %li",
+		tst_res(TFAIL, "shm_tot = %lu, expected %lu",
 			info->shm_tot, shm_tot);
 	} else {
-		tst_res(TPASS, "shm_tot = %li", shm_tot);
+		tst_res(TPASS, "shm_tot = %lu", shm_tot);
 	}
 
-	fclose(f);
+	SAFE_FCLOSE(f);
 }
 
 static void verify_shminfo(unsigned int n)

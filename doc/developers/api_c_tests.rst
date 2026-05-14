@@ -52,10 +52,6 @@ NUMA
 ----
 .. kernel-doc:: ../../include/tst_numa.h
 
-NUMA
-----
-.. kernel-doc:: ../../include/tst_numa.h
-
 Option parsing
 --------------
 
@@ -71,4 +67,4 @@ Temporary directory
 
 LTP libraries
 -------------
-.. kernel-doc:: ../../include/libswap.h
+.. kernel-doc:: ../../include/tse_swap.h

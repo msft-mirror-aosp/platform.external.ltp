@@ -59,4 +59,11 @@ bool tst_check_cmd(const char *cmd, const int brk_nosupp);
  */
 const char **tst_get_supported_fs_types(const char *const *skiplist);
 
+/*
+ * Returns NULL-terminated array of kernel-supported filesystems.
+ *
+ * @skiplist A NULL terminated array of filesystems to skip.
+ */
+const char **tst_get_supported_fs_types(const char *const *skiplist);
+
 #endif

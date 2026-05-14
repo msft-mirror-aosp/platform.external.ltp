@@ -68,6 +68,7 @@ cachestat03 cachestat03
 cachestat04 cachestat04
 
 chdir01 chdir01
+chdir02 chdir02
 chdir04 chdir04
 
 chmod01 chmod01
@@ -623,6 +624,8 @@ ioctl_ficlonerange01 ioctl_ficlonerange01
 ioctl_ficlonerange02 ioctl_ficlonerange02
 ioctl_fiemap01 ioctl_fiemap01
 
+ioctl_getlbmd01 ioctl_getlbmd01
+
 ioctl_pidfd01 ioctl_pidfd01
 ioctl_pidfd02 ioctl_pidfd02
 ioctl_pidfd03 ioctl_pidfd03
@@ -670,6 +673,7 @@ fanotify21 fanotify21
 fanotify22 fanotify22
 fanotify23 fanotify23
 fanotify24 fanotify24
+fanotify25 fanotify25
 
 ioperm01 ioperm01
 ioperm02 ioperm02
@@ -697,6 +701,7 @@ io_setup02 io_setup02
 io_submit01 io_submit01
 io_submit02 io_submit02
 io_submit03 io_submit03
+io_submit04 io_submit04
 
 keyctl01 keyctl01
 keyctl02 keyctl02
@@ -924,6 +929,7 @@ mremap03 mremap03
 mremap04 mremap04
 mremap05 mremap05
 mremap06 mremap06
+mremap07 mremap07
 
 mseal01 mseal01
 mseal02 mseal02
@@ -1092,6 +1098,8 @@ pivot_root01 pivot_root01
 
 poll01 poll01
 poll02 poll02
+poll03 poll03
+poll04 poll04
 
 ppoll01 ppoll01
 
@@ -1775,6 +1783,7 @@ userfaultfd02 userfaultfd02
 userfaultfd03 userfaultfd03
 userfaultfd04 userfaultfd04
 userfaultfd05 userfaultfd05
+userfaultfd06 userfaultfd06
 
 ustat01 ustat01
 ustat02 ustat02
@@ -1894,6 +1903,7 @@ membarrier01 membarrier01
 
 io_uring01 io_uring01
 io_uring02 io_uring02
+io_uring03 io_uring03
 
 # Tests below may cause kernel memory leak
 perf_event_open03 perf_event_open03
