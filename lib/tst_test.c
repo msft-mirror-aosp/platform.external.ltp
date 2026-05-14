@@ -309,8 +309,6 @@ static void print_result(const char *file, const int lineno, int ttype,
 		res = "TBROK";
 	break;
 	case TCONF:
-		if (quiet_output)
-			return;
 		res = "TCONF";
 	break;
 	case TWARN:
