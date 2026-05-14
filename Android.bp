@@ -124,6 +124,8 @@ cc_defaults {
         "-DHAVE_STRUCT_MNT_ID_REQ_MNT_NS_FD",
         "-DHAVE_STRUCT_UFFDIO_MOVE",
         "-DHAVE_STRUCT_UFFDIO_WRITEPROTECT",
+        "-DHAVE_STRUCT_UFFDIO_POISON",
+        "-DHAVE_STRUCT_LOGICAL_BLOCK_METADATA_CAP",
         "-include bionic-compat.h",
         "-fcommon", //ld.lld: error: duplicate symbol use_the_ltp_clone_functions__do_not_use_clone
         // Too many files import sched.h so we enable -fcommon locally
