@@ -233,6 +233,19 @@ struct uffdio_writeprotect {
 };
 #endif	/* HAVE_STRUCT_UFFDIO_WRITEPROTECT */
 
+#ifndef HAVE_STRUCT_UFFDIO_POISON
+#define UFFD_FEATURE_POISON			(1<<14)
+#define _UFFDIO_POISON				(0x08)
+#define UFFDIO_POISON		_IOWR(UFFDIO, _UFFDIO_POISON, \
+				      struct uffdio_poison)
+struct uffdio_poison {
+        struct uffdio_range range;
+#define UFFDIO_POISON_MODE_DONTWAKE		((__u64)1<<0)
+        __u64 mode;
+        __s64 updated;
+};
+#endif	/* HAVE_STRUCT_UFFDIO_POISON */
+
 #define SAFE_USERFAULTFD(flags, retry) \
 	safe_userfaultfd(__FILE__, __LINE__, (flags), (retry))
 
@@ -262,6 +275,26 @@ retry:
 	}
 
 	return ret;
+}
+
+#define CHECK_UFFD_FEATURE(feature)	check_uffd_feature(feature, #feature)
+
+static inline void check_uffd_feature(uint64_t feature, const char *name)
+{
+	struct uffdio_api uffdio_api = {};
+	int uffd;
+
+	uffd = SAFE_USERFAULTFD(O_CLOEXEC | O_NONBLOCK, false);
+
+	uffdio_api.api = UFFD_API;
+	SAFE_IOCTL(uffd, UFFDIO_API, &uffdio_api);
+
+	if (!(uffdio_api.features & feature)) {
+		SAFE_CLOSE(uffd);
+		tst_brk(TCONF, "%s not supported", name);
+	}
+
+	SAFE_CLOSE(uffd);
 }
 
 #endif /* LAPI_USERFAULTFD_H__ */

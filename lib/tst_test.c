@@ -34,9 +34,9 @@
 #include "tst_sys_conf.h"
 #include "tst_kconfig.h"
 #include "tst_private.h"
-#include "old_resource.h"
-#include "old_device.h"
-#include "old_tmpdir.h"
+#include "tso_resource.h"
+#include "tso_device.h"
+#include "tso_tmpdir.h"
 #include "ltp-version.h"
 #include "tst_hugepage.h"
 
@@ -68,7 +68,6 @@ static int iterations = 1;
 static float duration = -1;
 static float timeout_mul = -1;
 static int reproducible_output;
-static int quiet_output;
 
 struct context {
 	int32_t lib_pid;
@@ -83,7 +82,7 @@ struct context {
 	tst_atomic_t abort_flag;
 	uint32_t mntpoint_mounted:1;
 	uint32_t ovl_mounted:1;
-	uint32_t tdebug:1;
+	uint32_t tdebug;
 };
 
 struct results {
@@ -196,6 +195,9 @@ void tst_reinit(void)
 	size_t size = getpagesize();
 	int fd;
 
+	if (ipc)
+		tst_brk(TBROK, "Test library already initialized!");
+
 	if (!path)
 		tst_brk(TBROK, IPC_ENV_VAR" is not defined");
 
@@ -216,8 +218,7 @@ void tst_reinit(void)
 	tst_futexes = ipc->futexes;
 	tst_max_futexes = (size - offsetof(struct ipc_region, futexes)) / sizeof(futex_t);
 
-	if (context->tdebug)
-		tst_res(TINFO, "Restored metadata for PID %d", getpid());
+	tst_res(TDEBUG, "Restored metadata for PID %d", getpid());
 }
 
 extern char **environ;
@@ -308,20 +309,18 @@ static void print_result(const char *file, const int lineno, int ttype,
 		res = "TBROK";
 	break;
 	case TCONF:
-		if (quiet_output)
-			return;
 		res = "TCONF";
 	break;
 	case TWARN:
 		res = "TWARN";
 	break;
 	case TINFO:
-		if (quiet_output)
+		if (reproducible_output)
 			return;
 		res = "TINFO";
 	break;
 	case TDEBUG:
-		if (quiet_output)
+		if (reproducible_output)
 			return;
 		res = "TDEBUG";
 	break;
@@ -490,19 +489,20 @@ void tst_res_(const char *file, const int lineno, int ttype,
 	va_list va;
 
 	/*
-	 * Suppress TDEBUG output in these cases:
+	 * Control TDEBUG output in these cases:
 	 * 1. No context available (e.g., called before IPC initialization)
-	 * 2. Called from the library process, unless explicitly enabled
-	 * 3. Debug output is not enabled (context->tdebug == 0)
+	 * 2. Debug output is completely disabled (default: context->tdebug == 0).
+	 * 3. Debug output is only for test process (context->tdebug == 1).
+	 * 4. Debug output is enabled for both test and lib processes (context->tdebug == 2).
 	 */
 	if (ttype == TDEBUG) {
 		if (!context)
 			return;
 
-		if (context->lib_pid == getpid())
+		if (!context->tdebug)
 			return;
 
-		if (!context->tdebug)
+		if (context->tdebug == 1 && context->lib_pid == getpid())
 			return;
 	}
 
@@ -654,11 +654,11 @@ static struct option {
 	char *optstr;
 	char *help;
 } options[] = {
-	{"h",  "-h       Prints this help"},
-	{"i:", "-i n     Execute test n times"},
-	{"I:", "-I x     Execute test for n seconds"},
-	{"D",  "-D       Prints debug information"},
-	{"V",  "-V       Prints LTP version"},
+	{"h",  "-h        Prints this help"},
+	{"i:", "-i n      Execute test n times"},
+	{"I:", "-I x      Execute test for n seconds"},
+	{"D::", "-D[1,2]  Prints debug information (can be overwritten by LTP_DEBUG)"},
+	{"V",  "-V        Prints LTP version"},
 };
 
 static void print_help(void)
@@ -675,9 +675,9 @@ static void print_help(void)
 	fprintf(stderr, "LTP_COLORIZE_OUTPUT      Force colorized output behaviour (y/1 always, n/0: never)\n");
 	fprintf(stderr, "LTP_DEV                  Path to the block device to be used (for .needs_device)\n");
 	fprintf(stderr, "LTP_DEV_FS_TYPE          Filesystem used for testing (default: %s)\n", DEFAULT_FS_TYPE);
-	fprintf(stderr, "LTP_ENABLE_DEBUG         Print debug messages (set 1 or y)\n");
-	fprintf(stderr, "LTP_REPRODUCIBLE_OUTPUT  Values 1 or y discard the actual content of the messages printed by the test\n");
-	fprintf(stderr, "LTP_QUIET                Values 1 or y will suppress printing TCONF, TWARN, TINFO, and TDEBUG messages\n");
+	fprintf(stderr, "LTP_DEBUG                Print debug messages (set 1(y) or 2)\n");
+	fprintf(stderr, "LTP_REPRODUCIBLE_OUTPUT  Values 1 or y suppress printing TINFO and TDEBUG messages and\n"
+			"                         discards the actual content of all other messages\n");
 	fprintf(stderr, "LTP_SINGLE_FS_TYPE       Specifies filesystem instead all supported (for .all_filesystems)\n");
 	fprintf(stderr, "LTP_FORCE_SINGLE_FS_TYPE Testing only. The same as LTP_SINGLE_FS_TYPE but ignores test skiplist.\n");
 	fprintf(stderr, "LTP_TIMEOUT_MUL          Timeout multiplier (must be a number >=1)\n");
@@ -825,8 +825,9 @@ static void parse_opts(int argc, char *argv[])
 			tst_brk(TBROK, "Invalid option");
 		break;
 		case 'D':
-			tst_res(TINFO, "Enabling debug info");
-			context->tdebug = 1;
+			if (getenv("LTP_DEBUG"))
+				break;
+			context->tdebug = optarg ? SAFE_STRTOL(optarg, 1, 2) : 1;
 		break;
 		case 'h':
 			print_help();
@@ -1395,9 +1396,8 @@ bool tst_cmd_present(const char *cmd)
 
 static void do_setup(int argc, char *argv[])
 {
-	char *tdebug_env = getenv("LTP_ENABLE_DEBUG");
+	char *tdebug_env = getenv("LTP_DEBUG");
 	char *reproducible_env = getenv("LTP_REPRODUCIBLE_OUTPUT");
-	char *quiet_env = getenv("LTP_QUIET");
 
 	if (!tst_test)
 		tst_brk(TBROK, "No tests to run");
@@ -1428,10 +1428,6 @@ static void do_setup(int argc, char *argv[])
 	    (!strcmp(reproducible_env, "1") || !strcmp(reproducible_env, "y")))
 		reproducible_output = 1;
 
-	if (quiet_env &&
-	    (!strcmp(quiet_env, "1") || !strcmp(quiet_env, "y")))
-		quiet_output = 1;
-
 	assert_test_fn();
 
 	TCID = tcid = get_tcid(argv);
@@ -1440,10 +1436,18 @@ static void do_setup(int argc, char *argv[])
 
 	parse_opts(argc, argv);
 
-	if (tdebug_env && (!strcmp(tdebug_env, "1") || !strcmp(tdebug_env, "y"))) {
-		tst_res(TINFO, "Enabling debug info");
-		context->tdebug = 1;
+	if (tdebug_env && *tdebug_env && !context->tdebug) {
+		if (!strcmp(tdebug_env, "2"))
+			context->tdebug = 2;
+		else if (!strcmp(tdebug_env, "1") || !strcmp(tdebug_env, "y"))
+			context->tdebug = 1;
+		else
+			tst_res(TWARN, "Invalid LTP_DEBUG value: '%s'", tdebug_env);
+
 	}
+
+	if (context->tdebug)
+		tst_res(TINFO, "Enabling debug info (level %d)", context->tdebug);
 
 	if (tst_test->needs_kconfigs && tst_kconfig_check(tst_test->needs_kconfigs))
 		tst_brk(TCONF, "Aborting due to unsuitable kernel config, see above!");
@@ -1473,15 +1477,6 @@ static void do_setup(int argc, char *argv[])
 			pcmd->present = tst_check_cmd(pcmd->cmd, !pcmd->optional) ? 1 : 0;
 			pcmd++;
 		}
-	}
-
-	if (tst_test->needs_drivers) {
-		const char *name;
-		int i;
-
-		for (i = 0; (name = tst_test->needs_drivers[i]); ++i)
-			if (tst_check_driver(name))
-				tst_brk(TCONF, "%s driver not available", name);
 	}
 
 	if (tst_test->mount_device)

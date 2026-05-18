@@ -5,10 +5,7 @@
  */
 
 /*\
- * Basic tests for open(2) and make sure open(2) works and handles error
- * conditions correctly.
- *
- * There are 28 test cases:
+ * Test if :manpage:`open(2)` handles error * conditions correctly.
  *
  * 1. Open regular file O_RDONLY
  * 2. Open regular file O_WRONLY
@@ -269,10 +266,10 @@ static void verify_open(unsigned int n)
 {
 	if (tc[n].err > 0) {
 		TST_EXP_FAIL2(open(tc[n].path, tc[n].flags, tc[n].mode),
-		             tc[n].err, "%s", tc[n].desc);
+				tc[n].err, "%s", tc[n].desc);
 	} else if (tc[n].err == 0) {
 		TST_EXP_FD(open(tc[n].path, tc[n].flags, tc[n].mode),
-		           "%s", tc[n].desc);
+				"%s", tc[n].desc);
 	} else {
 		TEST(open(tc[n].path, tc[n].flags, tc[n].mode));
 		tst_res(TPASS, "%s", tc[n].desc);

@@ -25,7 +25,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include "test.h"
-#include "safe_macros.h"
+#include "tso_safe_macros.h"
 
 static int file_exist(const char *path)
 {

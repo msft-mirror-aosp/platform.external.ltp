@@ -31,7 +31,7 @@ vpath %.mk		$(top_srcdir)/mk:$(top_srcdir)/mk/include
 # BOOTSTRAP_TARGETS:	Directories required to bootstrap out-of-build-tree
 # 			support.
 
-COMMON_TARGETS		:= pan utils
+COMMON_TARGETS		:= utils
 
 define target_to_dir_dep_mapping
 ifeq ($$(filter %-clean,$(1)),) # not *-clean
@@ -45,8 +45,8 @@ COMMON_TARGETS		+= testcases tools metadata
 
 # Don't want to nuke the original files if we're installing in-build-tree.
 ifneq ($(BUILD_TREE_STATE),$(BUILD_TREE_SRCDIR_INSTALL))
-INSTALL_TARGETS		+= runtest scenario_groups testscripts
-CLEAN_TARGETS		+= include runtest scenario_groups testscripts
+INSTALL_TARGETS		+= runtest testscripts
+CLEAN_TARGETS		+= include runtest testscripts
 endif
 INSTALL_TARGETS		+= $(COMMON_TARGETS)
 CLEAN_TARGETS		+= $(COMMON_TARGETS) lib libs

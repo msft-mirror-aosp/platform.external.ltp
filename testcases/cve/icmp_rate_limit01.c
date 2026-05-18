@@ -62,6 +62,8 @@ static void setup(void)
 	/* Do NOT close this FD, or both interfaces will be destroyed */
 	childns = SAFE_OPEN("/proc/self/ns/net", O_RDONLY);
 
+	SAFE_FILE_PRINTF("/proc/sys/net/ipv4/icmp_msgs_burst", "50");
+
 	/* Configure child namespace */
 	CREATE_VETH_PAIR("ltp_veth1", "ltp_veth2");
 	NETDEV_ADD_ADDRESS_INET("ltp_veth2", htonl(DSTADDR), NETMASK,
