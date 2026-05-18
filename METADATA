@@ -1,7 +1,18 @@
 # *** THIS PACKAGE HAS SPECIAL LICENSING CONDITIONS.  PLEASE
 #     CONSULT THE OWNERS AND opensource-licensing@google.com BEFORE
 #     DEPENDING ON IT IN YOUR PROJECT. ***
+name: "ltp"
+description:
+  "LTP provides tools and testsuites to verify the Linux kernel and related "
+  "subsystems"
 third_party {
   license_note: "would be RESTRICTED save for GFDL in: testcases/kernel/device-drivers/v4l/user_space/doc/spec/*.htm*"
   license_type: BY_EXCEPTION_ONLY
+  identifier {
+    type: "Git"
+    value: "https://github.com/linux-test-project/ltp/"
+    version: "8cd7644a52e348393d453d0ec5bf9424ea31a4cc"
+  }
+  version: "8cd7644a52e348393d453d0ec5bf9424ea31a4cc"
+  last_upgrade_date { year: 2026 month: 5 day: 15 }
 }
