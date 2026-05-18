@@ -14,6 +14,7 @@
 
 static struct tst_clone_args *args;
 static struct pidfd_info *info;
+static int err_nr = ESRCH;
 
 static void run(void)
 {
@@ -26,7 +27,7 @@ static void run(void)
 	info->mask = PIDFD_INFO_EXIT;
 
 	args->flags = CLONE_PIDFD | CLONE_NEWUSER | CLONE_NEWPID;
-	args->pidfd = (uint64_t)&pidfd;
+	args->pidfd = TST_PTR_TO_UINT(&pidfd);
 	args->exit_signal = SIGCHLD;
 
 	pid_child = SAFE_CLONE(args);
@@ -41,7 +42,7 @@ static void run(void)
 	args->exit_signal = SIGCHLD;
 
 	if (!SAFE_CLONE(args)) {
-		TST_EXP_FAIL(ioctl(pidfd, PIDFD_GET_INFO, info), ESRCH);
+		TST_EXP_FAIL(ioctl(pidfd, PIDFD_GET_INFO, info), err_nr);
 		exit(0);
 	}
 
@@ -52,6 +53,14 @@ static void setup(void)
 {
 	if (!ioctl_pidfd_info_exit_supported())
 		tst_brk(TCONF, "PIDFD_INFO_EXIT is not supported by ioctl()");
+
+	/*
+	 * ab89060fbc92e ("pidfs: return -EREMOTE when PIDFD_GET_INFO is called on another ns")
+	 * from v7.0, backported to v6.18.14 and v6.19.10.
+	 */
+	if (tst_kvercmp(6, 19, 10) >= 0 ||
+	    (tst_kvercmp(6, 18, 14) >= 0 && tst_kvercmp(6, 19, 0) < 0))
+		err_nr = EREMOTE;
 }
 
 static struct tst_test test = {

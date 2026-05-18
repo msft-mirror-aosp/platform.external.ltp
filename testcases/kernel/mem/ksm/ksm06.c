@@ -10,13 +10,8 @@
  * node are merged, otherwise pages from all nodes can be merged
  * together.
  *
- * Introduced in commit:
- *
- *  commit 90bd6fd31c8097ee4ddcb74b7e08363134863de5
- *   Author: Petr Holasek <pholasek@redhat.com>
- *   Date:   Fri Feb 22 16:35:00 2013 -0800
- *
- *   ksm: allow trees per NUMA node
+ * Introduced in kernel v3.9 commit:
+ * 90bd6fd31c809 ("ksm: allow trees per NUMA node")
  */
 
 #include "config.h"
@@ -32,7 +27,7 @@
 #include <limits.h>
 
 #include "tst_test.h"
-#include "tst_numa.h"
+#include "tse_numa.h"
 #include "ksm_helper.h"
 #include "ksm_test.h"
 
@@ -44,7 +39,7 @@ static unsigned long nr_pages = 100;
 static char *n_opt;
 
 static size_t page_size;
-static struct tst_nodemap *nodes;
+static struct tse_nodemap *nodes;
 
 static void test_ksm(void)
 {
@@ -124,7 +119,7 @@ static void setup(void)
 
 	page_size = getpagesize();
 
-	nodes = tst_get_nodemap(TST_NUMA_MEM, nr_pages * page_size / 1024);
+	nodes = tse_get_nodemap(TST_NUMA_MEM, nr_pages * page_size / 1024);
 	if (nodes->cnt <= 1)
 		tst_brk(TCONF, "Test requires at least two NUMA memory nodes");
 }

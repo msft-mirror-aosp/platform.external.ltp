@@ -11,7 +11,8 @@
    users/setup_tests
    users/testers_guide
    users/supported_systems
-   users/stats
+   users/supported_syscalls
+   users/cve_catalog
    users/test_catalog
 
 .. toctree::
@@ -55,8 +56,14 @@ For users
 :doc:`users/supported_systems`
    A list of supported technologies by the LTP framework
 
-:doc:`users/stats`
-   Some LTP statistics
+:doc:`users/supported_syscalls`
+   Syscalls supported by LTP tests
+
+:doc:`users/cve_catalog`
+   LTP reproducers for known CVEs
+
+:doc:`users/test_catalog`
+   The LTP test catalog
 
 :doc:`users/test_catalog`
    The LTP test catalog

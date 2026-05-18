@@ -43,8 +43,9 @@ users.
        Shell language: ``TST_NEEDS_DEVICE=1``.
 
    * - LTP_REPRODUCIBLE_OUTPUT
-     - When set to ``1`` or ``y`` discards the actual content of the messages
-       printed by the test (suitable for a reproducible output).
+     - When set to ``1`` or ``y`` suppress printing TINFO and TDEBUG messages
+       and discards the actual content of the other messages printed by the
+       test (suitable for a reproducible output).
 
    * - LTP_SINGLE_FS_TYPE
      - Specifies single filesystem to run the test on instead all supported
@@ -90,8 +91,9 @@ users.
      - Disable running test cleanup (defined in ``TST_CLEANUP``).
        Shell API only.
 
-   * - LTP_ENABLE_DEBUG
-     - Enable debug info (value ``1`` or ``y``). Equivalent of ``-D`` parameter.
+   * - LTP_DEBUG
+     - Enable debug info (value ``1`` (``y``) or ``2`` for more verbose level).
+       Equivalent of the ``-D`` parameter (see :doc:`../developers/debugging`).
 
 Test specific environment variables
 -----------------------------------

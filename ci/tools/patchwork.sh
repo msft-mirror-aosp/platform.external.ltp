@@ -9,6 +9,8 @@
 
 PATCHWORK_URL="${PATCHWORK_URL:-https://patchwork.ozlabs.org}"
 PATCHWORK_SINCE="${PATCHWORK_SINCE:-3600}"
+PATCHWORK_MAX_SINCE="${PATCHWORK_MAX_SINCE:-86400}"
+PATCHWORK_CI_PREFIX="${PATCHWORK_CI_PREFIX:-github-build}"
 
 command_exists() {
         local cmd
@@ -25,8 +27,21 @@ command_exists "curl" "jq"
 
 fetch_series() {
         local current_time=$(date +%s)
-        local since_time=$(expr $current_time - $PATCHWORK_SINCE)
-        local date=$(date -u -d @$since_time +"%Y-%m-%dT%H:%M:%SZ")
+        local since_time
+        local date
+
+        if [ -n "$PATCHWORK_SINCE_DATE" ]; then
+                since_time=$(date -u -d "$PATCHWORK_SINCE_DATE" +%s)
+                local max_since_time=$(expr $current_time - $PATCHWORK_MAX_SINCE)
+
+                if [ "$since_time" -lt "$max_since_time" ]; then
+                        since_time=$max_since_time
+                fi
+        else
+                since_time=$(expr $current_time - $PATCHWORK_SINCE)
+        fi
+
+        date=$(date -u -d @$since_time +"%Y-%m-%dT%H:%M:%SZ")
         local stdout
 
         stdout=$(curl -k -G "$PATCHWORK_URL/api/events/" \
@@ -93,13 +108,20 @@ set_series_state() {
 
 get_checks() {
         local patch_id="$1"
+        local prefix="$2"
         local stdout
 
         stdout="$(curl -k -G $PATCHWORK_URL/api/patches/$patch_id/checks/)"
 
         [ $? -eq 0 ] || exit 1
 
-        echo "$stdout" | jq -r '.[] | "\(.id)"'
+        if [ -n "$prefix" ]; then
+                echo "$stdout" | jq -r \
+                        --arg pfx "$prefix" \
+                        '.[] | select(.context | startswith($pfx)) | "\(.id)"'
+        else
+                echo "$stdout" | jq -r '.[] | "\(.id)"'
+        fi
 }
 
 already_tested() {
@@ -108,7 +130,7 @@ already_tested() {
         get_patches "$series_id" | while read -r patch_id; do
                 [ "$patch_id" ] || continue
 
-                get_checks "$patch_id" | while read -r check_id; do
+                get_checks "$patch_id" "$PATCHWORK_CI_PREFIX" | while read -r check_id; do
                         if [ -n "$check_id" ]; then
                                 echo "$check_id"
                                 return
@@ -146,7 +168,7 @@ send_results() {
 
         verify_token_exists
 
-        local context=$(echo "$3" | sed 's/:/_/g; s/\//-/g; s/\./-/g')
+        local context="$PATCHWORK_CI_PREFIX-$(echo "$3" | sed 's/:/_/g; s/\//-/g; s/\./-/g')"
 
         [ "$CC" ] && context="${context}_${CC}"
         [ "$ARCH" ] && context="${context}_${ARCH}"

@@ -20,7 +20,7 @@
 
 #include "tst_test.h"
 #include "tst_safe_sysv_ipc.h"
-#include "libnewipc.h"
+#include "tse_newipc.h"
 #include "lapi/sem.h"
 
 static int semid = -1;
@@ -130,10 +130,9 @@ static void verify_semctl(void)
 
 static void setup(void)
 {
-	key_t key = GETIPCKEY();
 	nsems = 1;
 
-	semid = SAFE_SEMGET(key, nsems, SEM_RA | IPC_CREAT);
+	semid = SAFE_SEMGET(IPC_PRIVATE, nsems, SEM_RA | IPC_CREAT);
 }
 
 static void cleanup(void)

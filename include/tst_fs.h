@@ -11,6 +11,7 @@
 #define TST_NFS_MAGIC      0x6969
 #define TST_RAMFS_MAGIC    0x858458f6
 #define TST_TMPFS_MAGIC    0x01021994
+#define TST_TRACEFS_MAGIC  0x74726163
 #define TST_V9FS_MAGIC     0x01021997
 #define TST_XFS_MAGIC      0x58465342
 #define TST_EXT2_OLD_MAGIC 0xEF51
@@ -79,7 +80,7 @@ int tst_fs_has_free_(void (*cleanup)(void), const char *path, uint64_t size,
  *
  *	long type;
  *
- *	swtich ((type = tst_fs_type(cleanup, "."))) {
+ *	switch ((type = tst_fs_type(cleanup, "."))) {
  *	case TST_NFS_MAGIC:
  *	case TST_TMPFS_MAGIC:
  *	case TST_RAMFS_MAGIC:
