@@ -370,7 +370,20 @@ extern int TST_PASS;
  * is converted to a string and used instead.
  */
 #define TST_EXP_PASS_PTR_VOID(SCALL, ...)                                      \
-               TST_EXP_PASS_PTR_(SCALL, #SCALL, (void *)-1, ##__VA_ARGS__);
+	TST_EXP_PASS_PTR_(SCALL, #SCALL, (void *)-1, ##__VA_ARGS__);
+
+/**
+ * TST_EXP_PASS_PTR_NULL() - Test call to return a non-NULL pointer.
+ *
+ * @SCALL: Tested call.
+ * @...: A printf-like parameters.
+ *
+ * This macro works like TST_EXP_PASS_PTR_VOID() but checks the return
+ * value against NULL instead of (void *)-1. Use this for libc functions
+ * such as fopen() that return NULL on failure.
+ */
+#define TST_EXP_PASS_PTR_NULL(SCALL, ...)                                      \
+	TST_EXP_PASS_PTR_(SCALL, #SCALL, NULL, ##__VA_ARGS__)
 
 /*
  * Returns true if err is in the exp_err array.
@@ -663,6 +676,36 @@ const char *tst_errno_names(char *buf, const int *exp_errs, int exp_errs_cnt);
 	} while (0)
 
 /**
+ * TST_EXP_FAIL_ARR_SILENT() - Test syscall to fail with expected errnos, silent variant.
+ *
+ * @SCALL: Tested syscall.
+ * @EXP_ERRS: Array of expected errnos.
+ * @EXP_ERRS_CNT: Lenght of EXP_ERRS.
+ * @...: A printf-like parameters.
+ *
+ * Unlike TST_EXP_FAIL_ARR() does not print :c:enum:`TPASS <tst_res_flags>` on
+ * success, only prints :c:enum:`TFAIL <tst_res_flags>` on failure.
+ */
+#define TST_EXP_FAIL_ARR_SILENT(SCALL, EXP_ERRS, EXP_ERRS_CNT, ...)            \
+	TST_EXP_FAIL_SILENT_(TST_RET == 0, SCALL, #SCALL,                      \
+		EXP_ERRS, EXP_ERRS_CNT, ##__VA_ARGS__)
+
+/**
+ * TST_EXP_FAIL2_ARR_SILENT() - Test syscall to fail with expected errnos, silent variant.
+ *
+ * @SCALL: Tested syscall.
+ * @EXP_ERRS: Array of expected errnos.
+ * @EXP_ERRS_CNT: Lenght of EXP_ERRS.
+ * @...: A printf-like parameters.
+ *
+ * Unlike TST_EXP_FAIL2_ARR() does not print :c:enum:`TPASS <tst_res_flags>` on
+ * success, only prints :c:enum:`TFAIL <tst_res_flags>` on failure.
+ */
+#define TST_EXP_FAIL2_ARR_SILENT(SCALL, EXP_ERRS, EXP_ERRS_CNT, ...)           \
+	TST_EXP_FAIL_SILENT_(TST_RET >= 0, SCALL, #SCALL,                     \
+		EXP_ERRS, EXP_ERRS_CNT, ##__VA_ARGS__)
+
+/**
  * TST_EXP_EXPR() - Check for expected expression.
  *
  * @EXPR: Expression to be tested.
@@ -692,6 +735,51 @@ const char *tst_errno_names(char *buf, const int *exp_errs, int exp_errs_cnt);
 		TST_PASS = 1;                                                  \
 	}                                                                      \
 } while (0)
+
+#define TST_EXP_LE_SILENT_(VAL_A, SVAL_A, VAL_B, SVAL_B, TYPE, PFS) do {       \
+	TYPE tst_tmp_a__ = VAL_A;                                              \
+	TYPE tst_tmp_b__ = VAL_B;                                              \
+                                                                               \
+	TST_PASS = 0;                                                          \
+                                                                               \
+	if (tst_tmp_a__ > tst_tmp_b__) {                                       \
+		tst_res_(__FILE__, __LINE__, TFAIL,                            \
+			SVAL_A " (" PFS ") > " SVAL_B " (" PFS ")",            \
+			tst_tmp_a__, tst_tmp_b__);                             \
+	} else {                                                               \
+		TST_PASS = 1;                                                  \
+	}                                                                      \
+} while (0)
+
+/**
+ * TST_EXP_LE_LU() - Compare two unsigned long long values, expect A <= B.
+ *
+ * @VAL_A: unsigned long long value A.
+ * @VAL_B: unsigned long long value B.
+ *
+ * Reports a pass if A <= B and a fail otherwise.
+ */
+#define TST_EXP_LE_LU(VAL_A, VAL_B) do {                                              \
+	TST_EXP_LE_SILENT_(VAL_A, #VAL_A, VAL_B, #VAL_B, unsigned long long, "%llu"); \
+									              \
+	if (TST_PASS) {                                                               \
+		tst_res_(__FILE__, __LINE__, TPASS,                                   \
+			#VAL_A " <= " #VAL_B " (%llu <= %llu)",                       \
+			(unsigned long long)VAL_A, (unsigned long long)VAL_B);        \
+	}                                                                             \
+} while (0)
+
+/**
+ * TST_EXP_LE_LU_SILENT() - Compare two unsigned long long values, silent variant.
+ *
+ * @VAL_A: unsigned long long value A.
+ * @VAL_B: unsigned long long value B.
+ *
+ * Unlike TST_EXP_LE_LU() does not print :c:enum:`TPASS <tst_res_flags>` on
+ * success, only prints :c:enum:`TFAIL <tst_res_flags>` on failure.
+ */
+#define TST_EXP_LE_LU_SILENT(VAL_A, VAL_B) \
+	TST_EXP_LE_SILENT_(VAL_A, #VAL_A, VAL_B, #VAL_B, unsigned long long, "%llu")
 
 /**
  * TST_EXP_EQ_LI() - Compare two long long values.

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * Copyright (c) 2018 Cyril Hrubis <chrubis@suse.cz>
+ * Copyright (c) 2018-2026 Cyril Hrubis <chrubis@suse.cz>
  */
 
 #include <stdlib.h>
@@ -15,6 +15,8 @@
 #include "tst_kconfig.h"
 #include "tst_bool_expr.h"
 #include "tst_safe_stdio.h"
+
+#include "tst_kconfig_checks.h"
 
 static int kconfig_skip_check(void)
 {
@@ -110,6 +112,78 @@ static void close_kconfig(FILE *fp)
 		fclose(fp);
 }
 
+static struct config_runtime_map {
+	const char *config;
+	bool (*runtime_check)(void);
+} config_runtime_maps[] = {
+	{"CONFIG_USER_NS", tst_user_ns_enabled},
+	{"CONFIG_NET_NS", tst_net_ns_enabled},
+	{"CONFIG_PID_NS", tst_pid_ns_enabled},
+	{"CONFIG_MNT_NS", tst_mnt_ns_enabled},
+	{"CONFIG_IPC_NS", tst_ipc_ns_enabled},
+	{}
+};
+
+static void kconfig_runtime_check(struct tst_kconfig_var *var)
+{
+	size_t i;
+
+	for (i = 0; config_runtime_maps[i].config; i++) {
+		if (strcmp(config_runtime_maps[i].config, var->id))
+			continue;
+
+		tst_res(TDEBUG, "Running runtime check for '%s'", var->id);
+
+		if (!config_runtime_maps[i].runtime_check()) {
+			tst_res(TINFO,
+				"%s=%c present but disabled at runtime",
+				var->id, var->choice);
+			var->choice = 'n';
+			return;
+		}
+	}
+}
+
+static struct config_module_map {
+	const char *config;
+	const char *module_name;
+} config_module_maps[] = {
+	{"CONFIG_KVM", "kvm"},
+	{"CONFIG_ZRAM", "zram"},
+	{"CONFIG_SQUASHFS", "squashfs"},
+	{"CONFIG_BLK_DEV_LOOP", "loop"},
+	{"CONFIG_TUN", "tun"},
+	{"CONFIG_BLK_DEV_RAM", "brd"},
+	{"CONFIG_HWPOISON_INJECT", "hwpoison_inject"},
+	{"CONFIG_QFMT_V2", "quota_v2"},
+	{"CONFIG_INPUT_UINPUT", "uinput"},
+	{"CONFIG_DUMMY", "dummy"},
+	{"CONFIG_CAN_VCAN", "vcan"},
+	{"CONFIG_CAN_RAW", "can-raw"},
+	{"CONFIG_CAN_BCM", "can-bcm"},
+	{"CONFIG_IP_SCTP", "sctp"},
+	{}
+};
+
+static void kconfig_module_check(struct tst_kconfig_var *var)
+{
+	size_t i;
+
+	for (i = 0; config_module_maps[i].config; i++) {
+		if (strcmp(config_module_maps[i].config, var->id))
+			continue;
+
+		tst_res(TDEBUG, "Running module check for '%s'", var->id);
+
+		if (tst_check_module_driver(config_module_maps[i].module_name)) {
+			tst_res(TINFO, "%s=%c present but module '%s' not installed",
+					var->id, var->choice, config_module_maps[i].module_name);
+			var->choice = 'n';
+			return;
+		}
+	}
+}
+
 static inline int kconfig_parse_line(const char *line,
                                      struct tst_kconfig_var *vars,
                                      unsigned int vars_len)
@@ -183,9 +257,12 @@ out:
 			switch (val[0]) {
 			case 'y':
 				vars[i].choice = 'y';
+				kconfig_runtime_check(&vars[i]);
 				return 1;
 			case 'm':
 				vars[i].choice = 'm';
+				kconfig_runtime_check(&vars[i]);
+				kconfig_module_check(&vars[i]);
 				return 1;
 			}
 		}
@@ -391,7 +468,7 @@ static const struct tst_kconfig_var *find_var(const struct tst_kconfig_var vars[
 
 /*
  * Fill in the kconfig variables array from the expressions. Also makes sure
- * that each variable is copied to the array exaclty once.
+ * that each variable is copied to the array exactly once.
  */
 static inline unsigned int populate_vars(struct tst_expr *exprs[],
                                          unsigned int expr_cnt,

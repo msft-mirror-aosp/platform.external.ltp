@@ -16,7 +16,7 @@
  */
 
 #include "test.h"
-#include "ltp_priv.h"
+#include "tso_priv.h"
 #include "tst_mkfs.h"
 #include "tst_device.h"
 
@@ -49,6 +49,9 @@ void tst_mkfs_(const char *file, const int lineno, void (cleanup_fn)(void),
 		          "Skipping mkfs for TMPFS filesystem");
 		return;
 	}
+
+	if (!strcmp(fs_type, "ntfs3"))
+		fs_type = "ntfs";
 
 	snprintf(mkfs, sizeof(mkfs), "mkfs.%s", fs_type);
 

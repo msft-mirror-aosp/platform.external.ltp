@@ -19,6 +19,7 @@ author = 'Linux Test Project'
 release = '1.0'
 ltp_repo = 'https://github.com/linux-test-project/ltp'
 ltp_repo_base_url = f"{ltp_repo}/tree/master"
+cve_url = "https://www.cve.org/CVERecord?id="
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -29,6 +30,15 @@ extensions = [
     'sphinx.ext.autosectionlabel',
     'sphinx.ext.extlinks',
 ]
+
+# Configure autosectionlabel to prefix labels with document name
+# This prevents duplicate labels when same test name appears in multiple files
+autosectionlabel_prefix_document = True
+# Only create labels for sections with unique names
+autosectionlabel_maxdepth = 2
+
+# Suppress duplicate label warnings for kernel-doc generated content
+suppress_warnings = ['autosectionlabel.*']
 
 exclude_patterns = ["html*", '_static*', '.venv*']
 extlinks = {
@@ -46,7 +56,7 @@ manpages_url = 'https://man7.org/linux/man-pages/man{section}/{page}.{section}.h
 
 spelling_lang = "en_US"
 spelling_warning = True
-spelling_exclude_patterns = ['users/stats.rst']
+spelling_exclude_patterns = ['users/supported_syscalls.rst']
 spelling_word_list_filename = "spelling_wordlist"
 
 # -- Options for HTML output -------------------------------------------------
@@ -56,11 +66,12 @@ html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 
 
-def generate_syscalls_stats(_):
+def generate_supported_syscalls(_):
     """
-    Generate statistics for syscalls. We fetch the syscalls list from the kernel
-    sources, then we compare it with testcases/kernel/syscalls folder and
-    generate a file that is included in the statistics documentation section.
+    Generate supported syscalls documentation. We fetch the syscalls list
+    from the kernel sources, then we compare it with testcases/kernel/syscalls
+    folder and generate a file that is included in the supported syscalls
+    documentation section.
     """
     output = '_static/syscalls.rst'
 
@@ -90,6 +101,7 @@ def generate_syscalls_stats(_):
         'landlock_restrict_self': f'{ltp_syscalls_path}/landlock',
         'lsetxattr': f'{ltp_syscalls_path}/lgetxattr',
         'newfstatat': f'{ltp_syscalls_path}/fstatat',
+        'open_tree_attr': f'{ltp_syscalls_path}/mount_setattr',
         'pkey_alloc': f'{ltp_syscalls_path}/pkeys',
         'pkey_free': f'{ltp_syscalls_path}/pkeys',
         'pkey_mprotect': f'{ltp_syscalls_path}/pkeys',
@@ -282,7 +294,7 @@ def _generate_tags_table(tags):
         "linux-stable-git": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/commit/?id=",
         "glibc-git": "https://sourceware.org/git/?p=glibc.git;a=commit;h=",
         "musl-git": "https://git.musl-libc.org/cgit/musl/commit/src/linux/clone.c?id=",
-        "CVE": "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-",
+        "CVE": cve_url + 'CVE-',
     }
 
     table = [
@@ -442,7 +454,9 @@ def generate_test_catalog(_):
     text = [
         '.. warning::',
         '    The following catalog has been generated using LTP metadata',
-        '    which is including only tests using the new :ref:`LTP C API`.',
+        '    which is including only tests using ',
+        '    :doc:`../developers/api_c_tests` and ',
+        '    :doc:`../developers/api_shell_tests`.',
         ''
     ]
 
@@ -534,6 +548,82 @@ def generate_test_catalog(_):
     with open(output, 'w+', encoding='utf-8') as new_tests:
         new_tests.write('\n'.join(text))
 
+def generate_cve_catalog(_):
+    """
+    Generate CVE catalog in a single file by extracting CVE tags from
+    metadata/ltp.json. This creates a single _static/cve.rst file with
+    all CVE information and links to test sources.
+    """
+    output = '_static/cve.rst'
+    metadata_file = '../metadata/ltp.json'
+
+    # Load metadata
+    metadata = None
+    try:
+        with open(metadata_file, 'r', encoding='utf-8') as data:
+            metadata = json.load(data)
+    except FileNotFoundError:
+        logger = sphinx.util.logging.getLogger(__name__)
+        msg = f"Can't find metadata file ({metadata_file})"
+        logger.warning(msg)
+        return
+
+    # Extract CVE information from test tags
+    cve_data = {}
+    tests = metadata.get('tests', {})
+
+    for test_name, test_info in tests.items():
+        tags = test_info.get('tags', [])
+        for tag in tags:
+            if len(tag) >= 2 and tag[0] == 'CVE':
+                cve_id = tag[1].upper()
+                # Normalize CVE ID format: ensure it starts with "CVE-"
+                if not cve_id.startswith('CVE-'):
+                    cve_id = 'CVE-' + cve_id
+                if cve_id not in cve_data:
+                    cve_data[cve_id] = []
+                cve_data[cve_id].append(test_name)
+
+    # Generate single CVE catalog file
+    total_cves = len(cve_data)
+    text = [
+        '.. note::',
+        '    The following CVE catalog has been generated from test',
+        '    metadata and includes all CVE reproducers in LTP.',
+        '',
+        f'LTP includes reproducers for {total_cves} known CVEs.',
+        '',
+        '.. list-table::',
+        '   :header-rows: 1',
+        '   :widths: 40 60',
+        '',
+        '   * - CVE ID',
+        '     - Test Name(s)',
+    ]
+
+    # Add CVEs in descending order (newest first)
+    for cve_id in sorted(cve_data.keys(), reverse=True):
+        test_names = cve_data[cve_id]
+
+        # Create cross-references for all tests
+        test_links = []
+        for test_name in sorted(test_names):
+            test_anchor = f"users/test_catalog:{test_name}"
+            test_link = f":ref:`{test_name} <{test_anchor}>`"
+            test_links.append(test_link)
+
+        # Join multiple tests with commas
+        tests_str = ', '.join(test_links)
+
+        cve_link = f'`{cve_id} <{cve_url}{cve_id}>`_'
+
+        text.extend([
+            f'   * - {cve_link}',
+            f'     - {tests_str}',
+        ])
+
+    with open(output, 'w+', encoding='utf-8') as cve_catalog:
+        cve_catalog.write('\n'.join(text))
 
 def setup(app):
     """
@@ -541,5 +631,6 @@ def setup(app):
     customizations.
     """
     app.add_css_file('custom.css')
-    app.connect('builder-inited', generate_syscalls_stats)
+    app.connect('builder-inited', generate_supported_syscalls)
+    app.connect('builder-inited', generate_cve_catalog)
     app.connect('builder-inited', generate_test_catalog)
