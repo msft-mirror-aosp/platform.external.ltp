@@ -17,6 +17,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include "tst_test.h"
+#include "pgsize_helpers.h"
 
 static int test_fd;
 static char *mmaped_area;
@@ -31,7 +32,7 @@ static uint64_t get_dirty_bit(void *data)
 	uint64_t pagemap_entry, pageflag_entry, pfn, index;
 
 	addr = (unsigned long)data;
-	index = (addr / pagesize) * sizeof(uint64_t);
+	index = (addr / kernel_page_size()) * sizeof(uint64_t);
 	pagemap_fd = SAFE_OPEN("/proc/self/pagemap", O_RDONLY);
 	SAFE_LSEEK(pagemap_fd, index, SEEK_SET);
 	SAFE_READ(1, pagemap_fd, &pagemap_entry, sizeof(pagemap_entry));

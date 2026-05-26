@@ -23,6 +23,7 @@ static int get_writesize(void)
 {
 	int nfd, write_size = 0;
 	char buf[4096];
+
 	struct pollfd pfd[] = {
 		{.fd = fds[1], .events = POLLOUT},
 	};
@@ -62,6 +63,7 @@ static void setup(void)
 	epfd = epoll_create(3);
 	if (epfd == -1)
 		tst_brk(TBROK | TERRNO, "epoll_create() failed");
+
 
 	if (epoll_ctl(epfd, EPOLL_CTL_ADD, fds[0], &epevs[0]) ||
 	    epoll_ctl(epfd, EPOLL_CTL_ADD, fds[1], &epevs[1])) {
