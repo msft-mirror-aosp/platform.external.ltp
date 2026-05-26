@@ -1,0 +1,26 @@
+commit 78c4ecd093210af6265596a1a1c87105a16ebbe8
+Author: Li Guanglei <guanglei.li@unisoc.com>
+Date:   Tue Nov 24 10:55:37 2020 +0800
+
+    eas: sched_dl_runtime: fix DL task running time in each sched_period
+    
+    DL task running time in each sched_period is period_exec_time_us,
+    which accumulate each running section within sched_deadline.
+    period_exec_time_us should be reset to Zero for next sched_period.
+    
+    Bug: 173763704
+    Signed-off-by: Li Guanglei <guanglei.li@unisoc.com>
+    Change-Id: I102faa6b0c3c874a79fd8ce1a2cc31452daee9c9
+
+diff --git a/testcases/kernel/sched/eas/sched_dl_runtime.c b/testcases/kernel/sched/eas/sched_dl_runtime.c
+index 27f0564d4..d0bba8716 100644
+--- a/testcases/kernel/sched/eas/sched_dl_runtime.c
++++ b/testcases/kernel/sched/eas/sched_dl_runtime.c
+@@ -126,6 +126,7 @@ static int parse_results(void)
+ 			periods_parsed++;
+ 			next_deadline_ts_us += 20000;
+ 			next_period_ts_us += 20000;
++			period_exec_time_us = 0;
+ 		}
+ 		if (trace[i].event_type == TRACE_RECORD_SCHED_SWITCH) {
+ 			struct trace_sched_switch *t = trace[i].event_data;

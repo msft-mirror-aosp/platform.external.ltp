@@ -1,0 +1,59 @@
+ANDROID: loop device creation retry
+
+Retry loop device creation to allow time for the device to be created on Android.
+This resolves failures where stat on the newly allocated loop device fails
+immediately after LOOP_CTL_GET_FREE.
+
+Bug: 148978487
+Test: mm
+
+diff --git a/lib/tst_device.c b/lib/tst_device.c
+index 3691f18d2..5f4af3f89 100644
+--- a/lib/tst_device.c
++++ b/lib/tst_device.c
+@@ -82,7 +82,7 @@
+ 
+ int tst_find_free_loopdev(char *path, size_t path_len)
+ {
+-	int ctl_fd, dev_fd, rc, i;
++	int ctl_fd, dev_fd, rc, i, path_set;
+ 	struct loop_info loopinfo;
+ 	char buf[PATH_MAX];
+ 
+@@ -93,8 +93,18 @@
+ 		rc = ioctl(ctl_fd, LOOP_CTL_GET_FREE);
+ 		close(ctl_fd);
+ 		if (rc >= 0) {
+-			if (path && set_dev_loop_path(rc, path, path_len))
+-				tst_brkm(TBROK, NULL, "Could not stat loop device %i", rc);
++			if (path) {
++				// b/148978487 retry to allow time for device creation
++				for (i = 0; i < 50; i++) {
++					path_set = set_dev_loop_path(rc, path, path_len);
++					// set_dev_path returns 1 on success
++					if (!path_set)
++						break;
++					usleep(50000);
++				}
++				if (path_set)
++					tst_brkm(TBROK, NULL, "Could not stat loop device %i", rc);
++			}
+ 			tst_resm(TINFO, "Found free device %d '%s'",
+ 				rc, path ?: "");
+ 			return rc;
+@@ -156,7 +166,14 @@
+ 	int dev_fd, file_fd;
+ 	struct loop_info loopinfo;
+ 
+-	dev_fd = open(dev, O_RDWR);
++	// b/148978487 retry to allow time for device creation
++	int attach_tries = 20;
++	while (attach_tries--) {
++		dev_fd = open(dev, O_RDWR);
++		if (dev_fd >= 0)
++			break;
++		usleep(50000);
++	}
+ 	if (dev_fd < 0) {
+ 		tst_resm(TWARN | TERRNO, "open('%s', O_RDWR) failed", dev);
+ 		return 1;

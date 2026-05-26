@@ -1,0 +1,809 @@
+commit 9b1d17e857940e0d43f1c02e2385a88df48e6e58
+Author: Hridya Valsaraju <hridya@google.com>
+Date:   Mon Apr 19 10:15:23 2021 -0700
+
+    eas: Remove debugfs dependency for the sched/eas tests
+    
+    Currently, the test assumes that tracefs is mounted at
+    /sys/kernel/debug/tracing and hence, fails when debugfs is not mounted.
+    This patch sets the ftrace root directory by first checking if tracefs
+    is mounted at /sys/kernel/tracing and falls back to
+    /sys/kernel/debug/tracing.
+    
+    Bug: 148754609
+    Test: manual
+    Change-Id: I21db485f0f3a768fb6f7183b1aa53e3df3c4837c
+    Signed-off-by: Hridya Valsaraju <hridya@google.com>
+
+diff --git a/testcases/kernel/sched/eas/eas_big_to_small.c b/testcases/kernel/sched/eas/eas_big_to_small.c
+index 8af883699..d1e14378f 100644
+--- a/testcases/kernel/sched/eas/eas_big_to_small.c
++++ b/testcases/kernel/sched/eas/eas_big_to_small.c
+@@ -35,7 +35,7 @@ static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 	burn(BURN_SEC * USEC_PER_SEC, 0);
+ 
+ 	printf("Changing to small task...\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "SMALL TASK");
++	tracefs_write("trace_marker", "SMALL TASK");
+ 	burn(BURN_SEC * USEC_PER_SEC, 1);
+ 
+ 	return NULL;
+@@ -151,17 +151,17 @@ static void run(void)
+ 		MAX_DOWNMIGRATE_LATENCY_US);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
+ 	SAFE_PTHREAD_JOIN(task_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -174,5 +174,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/eas_one_big_task.c b/testcases/kernel/sched/eas/eas_one_big_task.c
+index 5886e9e49..ab066f51a 100644
+--- a/testcases/kernel/sched/eas/eas_one_big_task.c
++++ b/testcases/kernel/sched/eas/eas_one_big_task.c
+@@ -111,17 +111,17 @@ static void run(void)
+ 		MAX_UPMIGRATE_LATENCY_US);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
+ 	SAFE_PTHREAD_JOIN(task_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -134,5 +134,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/eas_one_small_task.c b/testcases/kernel/sched/eas/eas_one_small_task.c
+index 74b3a93f8..3885d60bb 100644
+--- a/testcases/kernel/sched/eas/eas_one_small_task.c
++++ b/testcases/kernel/sched/eas/eas_one_small_task.c
+@@ -94,17 +94,17 @@ static void run(void)
+ 		MIN_CORRECT_CLUSTER_PCT);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
+ 	SAFE_PTHREAD_JOIN(task_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -115,5 +115,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/eas_small_big_toggle.c b/testcases/kernel/sched/eas/eas_small_big_toggle.c
+index c0d98b021..760949ff1 100644
+--- a/testcases/kernel/sched/eas/eas_small_big_toggle.c
++++ b/testcases/kernel/sched/eas/eas_small_big_toggle.c
+@@ -36,10 +36,10 @@ static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 	task_tid = gettid();
+ 
+ 	while (loops--) {
+-		SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "SMALL TASK");
++		tracefs_write("trace_marker", "SMALL TASK");
+ 		burn(BURN_SEC * USEC_PER_SEC, 1);
+ 
+-		SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "CPU HOG");
++		tracefs_write("trace_marker", "CPU HOG");
+ 		burn(BURN_SEC * USEC_PER_SEC, 0);
+ 	}
+ 
+@@ -204,17 +204,17 @@ static void run(void)
+ 	       BURN_SEC * NUM_LOOPS * 2);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
+ 	SAFE_PTHREAD_JOIN(task_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -227,5 +227,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/eas_small_to_big.c b/testcases/kernel/sched/eas/eas_small_to_big.c
+index 0e2c04a1a..dd194d5d1 100644
+--- a/testcases/kernel/sched/eas/eas_small_to_big.c
++++ b/testcases/kernel/sched/eas/eas_small_to_big.c
+@@ -36,7 +36,7 @@ static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 	burn(BURN_SEC * USEC_PER_SEC, 1);
+ 
+ 	printf("Changing to big task...\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "CPU HOG");
++	tracefs_write("trace_marker", "CPU HOG");
+ 	burn(BURN_SEC * USEC_PER_SEC, 0);
+ 
+ 	return NULL;
+@@ -146,17 +146,17 @@ static void run(void)
+ 		MAX_UPMIGRATE_LATENCY_US);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
+ 	SAFE_PTHREAD_JOIN(task_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -169,5 +169,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/eas_two_big_three_small.c b/testcases/kernel/sched/eas/eas_two_big_three_small.c
+index 000b9425b..e6149b1af 100644
+--- a/testcases/kernel/sched/eas/eas_two_big_three_small.c
++++ b/testcases/kernel/sched/eas/eas_two_big_three_small.c
+@@ -116,11 +116,11 @@ static void run(void)
+ 	printf("Tasks running for %d sec\n", BURN_SEC);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	for (i = 0; i < NUM_TASKS; i++)
+ 		SAFE_PTHREAD_CREATE(&tasks[i], NULL, task_fn, &task_tids[i]);
+@@ -128,7 +128,7 @@ static void run(void)
+ 		SAFE_PTHREAD_JOIN(tasks[i], NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -139,5 +139,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sched_boost.c b/testcases/kernel/sched/eas/sched_boost.c
+index 26a72ae66..6554a42da 100644
+--- a/testcases/kernel/sched/eas/sched_boost.c
++++ b/testcases/kernel/sched/eas/sched_boost.c
+@@ -78,7 +78,7 @@ static void *test_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 		// give time for utilization to track real task usage
+ 		do_work();
+ 		// start measuring
+-		SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++		tracefs_write("tracing_on", "1");
+ 		do_work();
+ 		sem_post(&result_sem);
+ 		tests_done++;
+@@ -110,10 +110,10 @@ static void run_test(void)
+ {
+ 	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/schedtune.boost",
+ 			 "%d", test_boost[test_index]);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	tracefs_write("trace", "\n");
+ 	sem_post(&test_sem);
+ 	sem_wait(&result_sem);
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 	parse_results();
+ 	test_index++;
+@@ -182,9 +182,9 @@ static void run(void)
+ 
+ 	SAFE_PTHREAD_CREATE(&test_thread, NULL, test_fn, NULL);
+ 
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
+ 
+ 	while (test_index < NUM_TESTS)
+ 		run_test();
+@@ -196,5 +196,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sched_cfs_prio.c b/testcases/kernel/sched/eas/sched_cfs_prio.c
+index 92d2dced6..b54d0d5b5 100644
+--- a/testcases/kernel/sched/eas/sched_cfs_prio.c
++++ b/testcases/kernel/sched/eas/sched_cfs_prio.c
+@@ -181,11 +181,11 @@ static void run(void)
+ 	       NUM_TASKS, TEST_TASK_SECONDS);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	for (i = 0; i < NUM_TASKS; i++)
+ 		SAFE_PTHREAD_CREATE(&tasks[i], NULL, task_fn,
+@@ -194,7 +194,7 @@ static void run(void)
+ 		SAFE_PTHREAD_JOIN(tasks[i], NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -207,5 +207,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sched_dl_runtime.c b/testcases/kernel/sched/eas/sched_dl_runtime.c
+index d0bba8716..18fadea9e 100644
+--- a/testcases/kernel/sched/eas/sched_dl_runtime.c
++++ b/testcases/kernel/sched/eas/sched_dl_runtime.c
+@@ -49,7 +49,7 @@ static void *dl_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 	attr.sched_period = 20000000;
+ 	attr.sched_deadline = 10000000;
+ 
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "DL START");
++	tracefs_write("trace_marker", "DL START");
+ 	ERROR_CHECK(sched_setattr(0, &attr, 0));
+ 
+ 	dl_task_tid = gettid();
+@@ -174,17 +174,17 @@ static void run(void)
+ 					       &dl_thread_sched_params));
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&dl_thread, NULL, dl_fn, NULL);
+ 	SAFE_PTHREAD_JOIN(dl_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -194,6 +194,7 @@ static void run(void)
+ }
+ 
+ static struct tst_test test = {
++	.setup = trace_setup,
+ 	.test_all = run,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sched_latency_dl.c b/testcases/kernel/sched/eas/sched_latency_dl.c
+index 486c4cf4d..e66fc21f7 100644
+--- a/testcases/kernel/sched/eas/sched_latency_dl.c
++++ b/testcases/kernel/sched/eas/sched_latency_dl.c
+@@ -61,7 +61,7 @@ static void *dl_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ static void *cfs_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ {
+ 	usleep(5000);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "WAKING");
++	tracefs_write("trace_marker", "WAKING");
+ 	sem_post(&sem);
+ 
+ 	burn(USEC_PER_SEC, 0);
+@@ -135,11 +135,11 @@ static void run(void)
+ 	sem_init(&sem, 0, 0);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&cfs_thread, &cfs_thread_attrs, cfs_fn, NULL);
+ 	SAFE_PTHREAD_CREATE(&dl_thread, &dl_thread_attrs, dl_fn, NULL);
+@@ -147,7 +147,7 @@ static void run(void)
+ 	SAFE_PTHREAD_JOIN(dl_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -160,5 +160,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sched_latency_rt.c b/testcases/kernel/sched/eas/sched_latency_rt.c
+index 3a5a91fde..68fb45a26 100644
+--- a/testcases/kernel/sched/eas/sched_latency_rt.c
++++ b/testcases/kernel/sched/eas/sched_latency_rt.c
+@@ -43,7 +43,7 @@ static void *cfs_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 	affine(0);
+ 
+ 	usleep(5000);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "WAKING");
++	tracefs_write("trace_marker", "WAKING");
+ 	sem_post(&sem);
+ 
+ 	burn(USEC_PER_SEC, 0);
+@@ -117,11 +117,11 @@ static void run(void)
+ 	sem_init(&sem, 0, 0);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&cfs_thread, &cfs_thread_attrs, cfs_fn, NULL);
+ 	SAFE_PTHREAD_CREATE(&rt_thread, &rt_thread_attrs, rt_fn, NULL);
+@@ -129,7 +129,7 @@ static void run(void)
+ 	SAFE_PTHREAD_JOIN(rt_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -142,5 +142,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sched_prio_3_fifo.c b/testcases/kernel/sched/eas/sched_prio_3_fifo.c
+index 4244f17c0..29f704f92 100644
+--- a/testcases/kernel/sched/eas/sched_prio_3_fifo.c
++++ b/testcases/kernel/sched/eas/sched_prio_3_fifo.c
+@@ -225,7 +225,7 @@ static void *rt_low_fn_a(void *arg LTP_ATTRIBUTE_UNUSED)
+ 
+ 	fixup_expected_events();
+ 
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "TEST START");
++	tracefs_write("trace_marker", "TEST START");
+ 
+ 	/* Wake up rt_low_fn_b. We should continue to run though. */
+ 	sem_post(&sem_low_b);
+@@ -353,11 +353,11 @@ static void run(void)
+ 	sem_init(&sem_low_a, 0, 0);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	create_rt_thread(70, rt_low_fn_a, &rt_low_a);
+ 	create_rt_thread(70, rt_low_fn_b, &rt_low_b);
+@@ -374,7 +374,7 @@ static void run(void)
+ 	SAFE_PTHREAD_JOIN(rt_high_b, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -387,5 +387,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sched_prio_3_rr.c b/testcases/kernel/sched/eas/sched_prio_3_rr.c
+index b4ecbbbaf..43bcce7a7 100644
+--- a/testcases/kernel/sched/eas/sched_prio_3_rr.c
++++ b/testcases/kernel/sched/eas/sched_prio_3_rr.c
+@@ -58,7 +58,7 @@ static void *rt_a_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 	affine(0);
+ 	/* Give all other tasks a chance to affine and block. */
+ 	usleep(3000);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "TEST START");
++	tracefs_write("trace_marker", "TEST START");
+ 	sem_post(&sem);
+ 	sem_post(&sem);
+ 	burn(BUSY_WAIT_USECS, 0);
+@@ -147,11 +147,11 @@ static void run(void)
+ 	printf("Running %d RT RR tasks for 10 seconds...\n", NUM_TASKS);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	create_rt_thread(70, rt_a_fn, &rt_a);
+ 	create_rt_thread(70, rt_b_fn, &rt_b);
+@@ -162,7 +162,7 @@ static void run(void)
+ 	SAFE_PTHREAD_JOIN(rt_c, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -175,5 +175,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sugov_latency.c b/testcases/kernel/sched/eas/sugov_latency.c
+index 923948edc..35154d83b 100644
+--- a/testcases/kernel/sched/eas/sugov_latency.c
++++ b/testcases/kernel/sched/eas/sugov_latency.c
+@@ -65,9 +65,9 @@ static void *burn_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 		return NULL;
+ 	}
+ 
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "affined");
++	tracefs_write("trace_marker", "affined");
+ 	burn(BURN_MSEC * 1000, 0);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "small task");
++	tracefs_write("trace_marker", "small task");
+ 	burn(BURN_MSEC * 1000, 1);
+ 
+ 	return NULL;
+@@ -205,17 +205,17 @@ static void run(void)
+ 	printf("CPU hog will be bound to CPU %d.\n", test_cpu);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&burn_thread, NULL, burn_fn, NULL);
+ 	SAFE_PTHREAD_JOIN(burn_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -226,5 +226,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sugov_stale_util.c b/testcases/kernel/sched/eas/sugov_stale_util.c
+index 685d1bd19..b02882c93 100644
+--- a/testcases/kernel/sched/eas/sugov_stale_util.c
++++ b/testcases/kernel/sched/eas/sugov_stale_util.c
+@@ -53,11 +53,9 @@ static void *event_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 
+ 	sem_wait(&sem);
+ 
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker",
+-			 "event task sleep");
++	tracefs_write("trace_marker", "event task sleep");
+ 	usleep(MAX_STALE_USEC);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker",
+-			 "event task wake");
++	tracefs_write("trace_marker", "event task wake");
+ 	/*
+ 	 * Waking up should be sufficient to get the cpufreq policy to
+ 	 * re-evaluate.
+@@ -83,7 +81,7 @@ static void *burn_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ 	 * Sleep. The next sugov update after TICK_NSEC should not include
+ 	 * this task's contribution.
+ 	 */
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "sleeping");
++	tracefs_write("trace_marker", "sleeping");
+ 
+ 	/*
+ 	 * Wake up task on another CPU in the same policy which will sleep
+@@ -205,11 +203,11 @@ static void run(void)
+ 	sem_init(&sem, 0, 0);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	SAFE_PTHREAD_CREATE(&burn_thread, NULL, burn_fn, NULL);
+ 	SAFE_PTHREAD_CREATE(&event_thread, NULL, event_fn, NULL);
+@@ -218,7 +216,7 @@ static void run(void)
+ 	SAFE_PTHREAD_JOIN(event_thread, NULL);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	if (parse_results())
+@@ -231,5 +229,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/sugov_wakeups.c b/testcases/kernel/sched/eas/sugov_wakeups.c
+index c1f6f2f08..b068b1fe9 100644
+--- a/testcases/kernel/sched/eas/sugov_wakeups.c
++++ b/testcases/kernel/sched/eas/sugov_wakeups.c
+@@ -34,16 +34,16 @@ static void run(void)
+ 		"%d wakeups allowed\n", SLEEP_SEC, MAX_WAKEUPS);
+ 
+ 	/* configure and enable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
+-	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
+-	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
+-	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	tracefs_write("tracing_on", "0");
++	tracefs_write("buffer_size_kb", "16384");
++	tracefs_write("set_event", TRACE_EVENTS);
++	tracefs_write("trace", "\n");
++	tracefs_write("tracing_on", "1");
+ 
+ 	sleep(SLEEP_SEC);
+ 
+ 	/* disable tracing */
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 	LOAD_TRACE();
+ 
+ 	for (i = 0; i < num_trace_records; i++) {
+@@ -64,5 +64,6 @@ static void run(void)
+ 
+ static struct tst_test test = {
+ 	.test_all = run,
++	.setup = trace_setup,
+ 	.cleanup = trace_cleanup,
+ };
+diff --git a/testcases/kernel/sched/eas/trace_parse.c b/testcases/kernel/sched/eas/trace_parse.c
+index 0aeb930a2..46bc0bdb4 100644
+--- a/testcases/kernel/sched/eas/trace_parse.c
++++ b/testcases/kernel/sched/eas/trace_parse.c
+@@ -20,12 +20,18 @@
+ 
+ #include "trace_parse.h"
+ 
++#define TRACEFS_MAX_PATH_LEN 512
++
+ int num_trace_records = 0;
+ struct trace_record *trace = NULL;
+ 
+ static int trace_fd = -1;
+ static char *trace_buffer = NULL;
+ 
++const char *tracefs_root = "/sys/kernel/tracing/";
++const char *debugfs_tracefs_root = "/sys/kernel/debug/tracing/";
++char *ftrace_root_dir;
++
+ static int parse_event_type(char *event_name)
+ {
+ 	if (!strcmp(event_name, "sched_process_exit"))
+@@ -86,9 +92,28 @@ void print_trace_record(struct trace_record *tr)
+ 		printf("(other)\n");
+ }
+ 
++void trace_setup(void)
++{
++	struct stat buf;
++
++	if (stat("/sys/kernel/tracing/trace", &buf) == 0)
++		ftrace_root_dir = tracefs_root;
++	else
++		ftrace_root_dir = debugfs_tracefs_root;
++
++}
++
++void tracefs_write(const char *file_name, const char *value)
++{
++	char buf[TRACEFS_MAX_PATH_LEN];
++
++	snprintf(buf, sizeof(buf), "%s%s", ftrace_root_dir, file_name);
++	SAFE_FILE_PRINTF(buf, value);
++}
++
+ void trace_cleanup(void)
+ {
+-	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	tracefs_write("tracing_on", "0");
+ 
+ }
+ 
+@@ -397,12 +422,15 @@ static int refill_buffer(char *buffer, char *idx)
+ 	int bytes_to_read;
+ 	int bytes_read = 0;
+ 	int rv;
++	char buf[256];
+ 
+ 	bytes_in_buffer = TRACE_BUFFER_SIZE - (idx - buffer) - 1;
+ 	bytes_to_read = TRACE_BUFFER_SIZE - bytes_in_buffer - 1;
+ 
+ 	if (trace_fd == -1) {
+-		trace_fd = open(TRACING_DIR "trace", O_RDONLY);
++		snprintf(buf, sizeof(buf), "%strace", ftrace_root_dir);
++
++		trace_fd = open(buf, O_RDONLY);
+ 		if (trace_fd == -1) {
+ 			printf("Could not open trace file!\n");
+ 			return 0;
+diff --git a/testcases/kernel/sched/eas/trace_parse.h b/testcases/kernel/sched/eas/trace_parse.h
+index 436b6d7d8..afce586a9 100644
+--- a/testcases/kernel/sched/eas/trace_parse.h
++++ b/testcases/kernel/sched/eas/trace_parse.h
+@@ -7,10 +7,6 @@
+ #ifndef _LTP_TRACE_PARSE_H_
+ #define _LTP_TRACE_PARSE_H_
+ 
+-/*
+- * It is necessary to define TRACE_EVENTS to communicate the events to trace. */
+-#define TRACING_DIR "/sys/kernel/debug/tracing/"
+-
+ enum {
+ 	TRACE_RECORD_OTHER = 0,
+ 	TRACE_RECORD_SCHED_PROCESS_EXIT,
+@@ -91,7 +87,10 @@ struct trace_record {
+ 
+ extern int num_trace_records;
+ extern struct trace_record *trace;
++extern char *ftrace_root_dir;
+ 
++void tracefs_write(const char *file_name, const char *value);
++void trace_setup(void);
+ void trace_cleanup(void);
+ void print_trace_record(struct trace_record *tr);
+ struct trace_record *load_trace(void);

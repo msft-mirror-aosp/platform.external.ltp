@@ -1,0 +1,21 @@
+ANDROID: Unconditionally include kvm in testcases/kernel/Makefile
+
+Unconditionally include `kvm` directory in the `SUBDIRS` list of
+`testcases/kernel/Makefile`. This ensures KVM tests are always built
+and dumped during the dry-run build generation, so they are included
+in the auto-generated Android.bp/gen.bp.
+
+Test: mm
+
+diff --git a/testcases/kernel/Makefile b/testcases/kernel/Makefile
+index 693644f83..8e76ad164 100644
+--- a/testcases/kernel/Makefile
++++ b/testcases/kernel/Makefile
+@@ -28,6 +28,7 @@ SUBDIRS			+= connectors \
+ 			   io \
+ 			   ipc \
+ 			   irq \
++			   kvm \
+ 			   logging \
+ 			   mem \
+ 			   numa \

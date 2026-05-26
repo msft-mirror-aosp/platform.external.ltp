@@ -1,0 +1,35 @@
+commit 9e98783c4c2375ac46359bbd7d4cf0883dd28962
+Author: Alessio Balsini <balsini@google.com>
+Date:   Thu May 6 13:17:34 2021 +0100
+
+    ANDROID: Fix struct timestamp name conflict
+    
+    timestamp is a data structure already defined in netinet/ip.h.
+    s/timestamp/eas_timestamp to fix potential overlapping.
+    
+    Test: git clean -dfx && make autotools && ./configure && make -j
+    Signed-off-by: Alessio Balsini <balsini@google.com>
+    Change-Id: Ic1ef5d79885a6c073572d55ce1f7fc05cb54d13a
+
+diff --git a/testcases/kernel/sched/eas/trace_parse.h b/testcases/kernel/sched/eas/trace_parse.h
+index afce586a9..732387e30 100644
+--- a/testcases/kernel/sched/eas/trace_parse.h
++++ b/testcases/kernel/sched/eas/trace_parse.h
+@@ -26,7 +26,7 @@ enum {
+ #define IRQ_CONTEXT_NMI 'z'
+ #define IRQ_CONTEXT_NMI_IN_HARD 'Z'
+ 
+-struct timestamp {
++struct trace_timestamp {
+ 	unsigned int sec;
+ 	unsigned int usec;
+ };
+@@ -79,7 +79,7 @@ struct trace_record {
+ 	unsigned char irq_context;
+ 	unsigned short preempt_depth;
+ 
+-	struct timestamp ts;
++	struct trace_timestamp ts;
+ 
+ 	unsigned int event_type;
+ 	void *event_data;

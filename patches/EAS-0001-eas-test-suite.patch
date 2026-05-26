@@ -1,0 +1,3973 @@
+commit 47c83904df4c93d0b712284ecfc224e240895b69
+Author: Steve Muckle <smuckle@google.com>
+Date:   Thu Oct 11 18:55:57 2018 -0700
+
+    eas test suite
+    
+    Change-Id: Ibdb992b025d75a043fc5995231a92f5bb74b7ad9
+    Signed-off-by: Steve Muckle <smuckle@google.com>
+
+diff --git a/testcases/kernel/sched/eas/Makefile b/testcases/kernel/sched/eas/Makefile
+new file mode 100644
+index 000000000..1ddf026ad
+--- /dev/null
++++ b/testcases/kernel/sched/eas/Makefile
+@@ -0,0 +1,11 @@
++# Copyright (c) 2018 Google, Inc.
++# SPDX-License-Identifier: GPL-2.0-or-later
++
++top_srcdir	?= ../../../..
++include $(top_srcdir)/include/mk/testcases.mk
++
++LDLIBS += -lpthread
++
++FILTER_OUT_MAKE_TARGETS := trace_parse util
++include $(top_srcdir)/include/mk/generic_leaf_target.mk
++$(MAKE_TARGETS): %: %.o trace_parse.o util.o
+diff --git a/testcases/kernel/sched/eas/eas_big_to_small.c b/testcases/kernel/sched/eas/eas_big_to_small.c
+new file mode 100644
+index 000000000..36f9598cd
+--- /dev/null
++++ b/testcases/kernel/sched/eas/eas_big_to_small.c
+@@ -0,0 +1,173 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * Task starts out as a CPU hog and then becomes small.
++ * Task placement and downmigration latency are verified.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++static int task_tid;
++
++#define MAX_DOWNMIGRATE_LATENCY_US 100000
++#define MAX_INCORRECT_CLUSTER_PCT 10
++#define BURN_SEC 3
++static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	task_tid = gettid();
++
++	printf("Big task executing for %ds...\n", BURN_SEC);
++	burn(BURN_SEC * USEC_PER_SEC, 0);
++
++	printf("Changing to small task...\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "SMALL TASK");
++	burn(BURN_SEC * USEC_PER_SEC, 1);
++
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i, pct, rv = 0;
++	unsigned long long exec_start_us = 0;
++	unsigned long long too_big_cpu_us = 0;
++	unsigned long long too_small_cpu_us = 0;
++	unsigned long long big_task_us = 0;
++	unsigned long long small_task_us = 0;
++	unsigned long long smalltask_ts_usec = 0;
++	unsigned long long downmigrate_ts_usec = 0;
++	unsigned long long downmigrate_latency_usec = 0;
++	cpu_set_t cpuset;
++
++	if (find_cpus_with_capacity(0, &cpuset)) {
++		printf("Failed to find the CPUs in the little cluster.\n");
++		return -1;
++	}
++
++	for (i = 0; i < num_trace_records; i++) {
++		unsigned long long segment_us;
++		struct trace_sched_switch *t = trace[i].event_data;
++
++		if (trace[i].event_type == TRACE_RECORD_TRACING_MARK_WRITE &&
++			   !strcmp(trace[i].event_data, "SMALL TASK")) {
++			smalltask_ts_usec = TS_TO_USEC(trace[i].ts);
++			continue;
++		}
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++
++		if (t->next_pid == task_tid) {
++			/* Start of task execution segment. */
++			if (exec_start_us) {
++				printf("Trace parse fail: double exec start\n");
++				return -1;
++			}
++			exec_start_us = TS_TO_USEC(trace[i].ts);
++			if (smalltask_ts_usec && !downmigrate_ts_usec &&
++			    CPU_ISSET(trace[i].cpu, &cpuset))
++				downmigrate_ts_usec = exec_start_us;
++			continue;
++		}
++		if (t->prev_pid != task_tid)
++			continue;
++		/* End of task execution segment. */
++		segment_us = TS_TO_USEC(trace[i].ts);
++		segment_us -= exec_start_us;
++		exec_start_us = 0;
++		if (CPU_ISSET(trace[i].cpu, &cpuset)) {
++			/* Task is running on little CPUs. */
++			if (!smalltask_ts_usec)
++				too_small_cpu_us += segment_us;
++		} else {
++			/* Task is running on big CPUs. */
++			if (smalltask_ts_usec) {
++				/*
++				 * Downmigration is accounted separately, so
++				 * only record mis-scheduled time here if it
++				 * happened after downmigration.
++				 */
++				if (downmigrate_ts_usec)
++					too_big_cpu_us += segment_us;
++			}
++		}
++		if (smalltask_ts_usec)
++			small_task_us += segment_us;
++		else
++			big_task_us += segment_us;
++	}
++
++	pct = (too_small_cpu_us * 100) / big_task_us;
++	rv |= (pct > MAX_INCORRECT_CLUSTER_PCT);
++	printf("Time incorrectly scheduled on small when task was big: "
++	       "%lld usec (%d%% of big task CPU time)\n", too_small_cpu_us,
++	       pct);
++	pct = (too_big_cpu_us * 100) / small_task_us;
++	rv |= (pct > MAX_INCORRECT_CLUSTER_PCT);
++	printf("Time incorrectly scheduled on big when task was small, after "
++	       "downmigration: %lld usec (%d%% of small task CPU time)\n",
++	       too_big_cpu_us, pct);
++
++	if (downmigrate_ts_usec) {
++		downmigrate_latency_usec = downmigrate_ts_usec -
++			smalltask_ts_usec;
++		printf("Downmigration latency: %lld usec\n",
++		       downmigrate_latency_usec);
++	} else {
++		printf("Task never downmigrated!\n");
++		downmigrate_latency_usec = UINT_MAX;
++	}
++
++	return (rv || downmigrate_latency_usec > MAX_DOWNMIGRATE_LATENCY_US);
++}
++
++static void run(void)
++{
++	pthread_t task_thread;
++
++	tst_res(TINFO, "Maximum incorrect cluster time percentage: %d%%",
++		MAX_INCORRECT_CLUSTER_PCT);
++	tst_res(TINFO, "Maximum downmigration latency: %d usec",
++		MAX_DOWNMIGRATE_LATENCY_US);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
++	SAFE_PTHREAD_JOIN(task_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Task placement/migration latency goals "
++			"not met.\n");
++	else
++		tst_res(TPASS, "Task placement/migration latency goals "
++			"met.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/eas_one_big_task.c b/testcases/kernel/sched/eas/eas_one_big_task.c
+new file mode 100644
+index 000000000..5886e9e49
+--- /dev/null
++++ b/testcases/kernel/sched/eas/eas_one_big_task.c
+@@ -0,0 +1,138 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A single big task executes. Task placement and upmigration latency is
++ * verified.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++static int big_task_tid;
++
++#define MAX_UPMIGRATE_LATENCY_US 100000
++#define MIN_CORRECT_CLUSTER_PCT 90
++#define BURN_SEC 3
++static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	big_task_tid = gettid();
++
++	printf("Big task executing for %ds...\n", BURN_SEC);
++	burn(BURN_SEC * USEC_PER_SEC, 0);
++
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i, pct;
++	unsigned long long exec_start_us = 0;
++	unsigned long long correct_us = 0;
++	unsigned long long total_us = 0;
++	unsigned long long start_ts_usec = 0;
++	unsigned long long upmigration_ts_usec = 0;
++	unsigned long long upmigration_latency_usec = 0;
++	cpu_set_t cpuset;
++
++	if (find_cpus_with_capacity(1, &cpuset)) {
++		printf("Failed to find the CPUs in the big cluster.\n");
++		return -1;
++	}
++
++	for (i = 0; i < num_trace_records; i++) {
++		unsigned long long segment_us;
++		struct trace_sched_switch *t = trace[i].event_data;
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++		if (t->next_pid == big_task_tid) {
++			/* Start of task execution segment. */
++			if (exec_start_us) {
++				printf("Trace parse fail: double exec start\n");
++				return -1;
++			}
++			exec_start_us = TS_TO_USEC(trace[i].ts);
++			if (!start_ts_usec)
++				start_ts_usec = exec_start_us;
++			if (!upmigration_ts_usec &&
++			    CPU_ISSET(trace[i].cpu, &cpuset))
++				upmigration_ts_usec = exec_start_us;
++			continue;
++		}
++		if (t->prev_pid != big_task_tid)
++			continue;
++		/* End of task execution segment. */
++		segment_us = TS_TO_USEC(trace[i].ts);
++		segment_us -= exec_start_us;
++		exec_start_us = 0;
++		if (CPU_ISSET(trace[i].cpu, &cpuset))
++			correct_us += segment_us;
++		total_us += segment_us;
++	}
++
++	pct = (correct_us * 100) / total_us;
++	printf("Total time task scheduled: %lld usec\n"
++	       "Time scheduled on a big CPU: %lld usec (%d%%)\n",
++	       total_us, correct_us, pct);
++
++	if (!upmigration_ts_usec) {
++		printf("Task never upmigrated!\n");
++		return -1;
++	}
++
++	upmigration_latency_usec = upmigration_ts_usec - start_ts_usec;
++	printf("Upmigration latency: %lld usec\n", upmigration_latency_usec);
++
++	return (pct < MIN_CORRECT_CLUSTER_PCT ||
++		upmigration_latency_usec > MAX_UPMIGRATE_LATENCY_US);
++}
++
++static void run(void)
++{
++	pthread_t task_thread;
++
++	tst_res(TINFO, "Minimum correct cluster time percentage: %d%%",
++		MIN_CORRECT_CLUSTER_PCT);
++	tst_res(TINFO, "Maximum upmigration latency: %d usec",
++		MAX_UPMIGRATE_LATENCY_US);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
++	SAFE_PTHREAD_JOIN(task_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Task placement/migration latency did not meet "
++			"requirements.");
++	else
++		tst_res(TPASS, "Task placement/migration latency met "
++			"requirements.");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/eas_one_small_task.c b/testcases/kernel/sched/eas/eas_one_small_task.c
+new file mode 100644
+index 000000000..74b3a93f8
+--- /dev/null
++++ b/testcases/kernel/sched/eas/eas_one_small_task.c
+@@ -0,0 +1,119 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A single small task executes. Task placement is verified.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++static int small_task_tid;
++
++#define MIN_CORRECT_CLUSTER_PCT 90
++#define BURN_SEC 5
++static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	small_task_tid = gettid();
++
++	printf("Small task executing for %ds...\n", BURN_SEC);
++	burn(BURN_SEC * USEC_PER_SEC, 1);
++
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i, pct;
++	unsigned long long exec_start_us = 0;
++	unsigned long long correct_us = 0;
++	unsigned long long total_us = 0;
++	cpu_set_t cpuset;
++
++	if (find_cpus_with_capacity(0, &cpuset)) {
++		printf("Failed to find the CPUs in the little cluster.\n");
++		return -1;
++	}
++
++	for (i = 0; i < num_trace_records; i++) {
++		struct trace_sched_switch *t = trace[i].event_data;
++		unsigned long long segment_us;
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++
++		if (t->next_pid == small_task_tid) {
++			if (exec_start_us) {
++				printf("Trace parse fail: double exec start\n");
++				return -1;
++			}
++			exec_start_us = TS_TO_USEC(trace[i].ts);
++			continue;
++		}
++		if (t->prev_pid != small_task_tid)
++			continue;
++		/* End of task execution segment. */
++		if (!exec_start_us) {
++			printf("Trace parse fail: double exec end\n");
++			return -1;
++		}
++		segment_us = TS_TO_USEC(trace[i].ts);
++		segment_us -= exec_start_us;
++		exec_start_us = 0;
++		if (CPU_ISSET(trace[i].cpu, &cpuset))
++			correct_us += segment_us;
++		total_us += segment_us;
++	}
++
++	pct = (correct_us * 100) / total_us;
++	printf("Total time task scheduled: %lld usec\n"
++	       "Time scheduled on a little CPU: %lld usec (%d%%)\n",
++	       total_us, correct_us, pct);
++
++	return (pct < MIN_CORRECT_CLUSTER_PCT);
++}
++
++static void run(void)
++{
++	pthread_t task_thread;
++
++	tst_res(TINFO, "Minimum correct cluster time percentage: %d%%\n",
++		MIN_CORRECT_CLUSTER_PCT);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
++	SAFE_PTHREAD_JOIN(task_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Small task ran too much on non-small CPUs.\n");
++	else
++		tst_res(TPASS, "Small task ran appropriately on small CPUs.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/eas_small_big_toggle.c b/testcases/kernel/sched/eas/eas_small_big_toggle.c
+new file mode 100644
+index 000000000..c0d98b021
+--- /dev/null
++++ b/testcases/kernel/sched/eas/eas_small_big_toggle.c
+@@ -0,0 +1,231 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A task alternates between being big and small. Max up and down migration
++ * latencies and task placement are verified.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++static int task_tid;
++
++#define MAX_UPMIGRATE_LATENCY_US 100000
++#define MAX_DOWNMIGRATE_LATENCY_US 100000
++#define MAX_INCORRECT_CLUSTER_PCT 10
++#define BURN_SEC 1
++#define NUM_LOOPS 10
++static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	int loops = NUM_LOOPS;
++
++	task_tid = gettid();
++
++	while (loops--) {
++		SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "SMALL TASK");
++		burn(BURN_SEC * USEC_PER_SEC, 1);
++
++		SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "CPU HOG");
++		burn(BURN_SEC * USEC_PER_SEC, 0);
++	}
++
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i, pct, rv = 0;
++	unsigned long long exec_start_us = 0;
++	unsigned long long too_big_cpu_us = 0;
++	unsigned long long too_small_cpu_us = 0;
++	unsigned long long small_task_us = 0;
++	unsigned long long big_task_us = 0;
++	unsigned long long smalltask_ts_usec = 0;
++	unsigned long long cpuhog_ts_usec = 0;
++	unsigned long long upmigrate_ts_usec = 0;
++	unsigned long long downmigrate_ts_usec = 0;
++	unsigned long long max_upmigrate_latency_usec = 0;
++	unsigned long long max_downmigrate_latency_usec = 0;
++	cpu_set_t cpuset;
++
++	if (find_cpus_with_capacity(0, &cpuset)) {
++		printf("Failed to find the CPUs in the little cluster.\n");
++		return -1;
++	}
++
++	for (i = 0; i < num_trace_records; i++) {
++		unsigned long long segment_us;
++		struct trace_sched_switch *t = trace[i].event_data;
++
++		if (trace[i].event_type == TRACE_RECORD_TRACING_MARK_WRITE) {
++			if (!strcmp(trace[i].event_data, "CPU HOG")) {
++				/* Task is transitioning to cpu hog. */
++				cpuhog_ts_usec = TS_TO_USEC(trace[i].ts);
++				if (downmigrate_ts_usec) {
++					unsigned long long temp_latency;
++					temp_latency = downmigrate_ts_usec -
++						smalltask_ts_usec;
++					if (temp_latency >
++					    max_downmigrate_latency_usec)
++						max_downmigrate_latency_usec =
++							temp_latency;
++				} else if (smalltask_ts_usec) {
++					printf("Warning: small task never "
++					       "downmigrated.\n");
++					rv = 1;
++				}
++				downmigrate_ts_usec = 0;
++				smalltask_ts_usec = 0;
++			} else if (!strcmp(trace[i].event_data, "SMALL TASK")) {
++				smalltask_ts_usec = TS_TO_USEC(trace[i].ts);
++				if (upmigrate_ts_usec) {
++					unsigned long long temp_latency;
++					temp_latency = upmigrate_ts_usec -
++						cpuhog_ts_usec;
++					if (temp_latency >
++					    max_upmigrate_latency_usec)
++						max_upmigrate_latency_usec =
++							temp_latency;
++				} else if (cpuhog_ts_usec) {
++					printf("Warning: big task never "
++					       "upmigrated.\n");
++					rv = 1;
++				}
++				upmigrate_ts_usec = 0;
++				cpuhog_ts_usec = 0;
++			}
++			continue;
++		}
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++		if (t->next_pid == task_tid) {
++			/* Start of task execution segment. */
++			if (exec_start_us) {
++				printf("Trace parse fail: double exec start\n");
++				return -1;
++			}
++			exec_start_us = TS_TO_USEC(trace[i].ts);
++			if (cpuhog_ts_usec && !upmigrate_ts_usec &&
++			    !CPU_ISSET(trace[i].cpu, &cpuset))
++				upmigrate_ts_usec = exec_start_us;
++			if (smalltask_ts_usec && !downmigrate_ts_usec &&
++			    CPU_ISSET(trace[i].cpu, &cpuset))
++				downmigrate_ts_usec = exec_start_us;
++			continue;
++		}
++		if (t->prev_pid != task_tid)
++			continue;
++		/* End of task execution segment. */
++		segment_us = TS_TO_USEC(trace[i].ts);
++		segment_us -= exec_start_us;
++		exec_start_us = 0;
++		if (CPU_ISSET(trace[i].cpu, &cpuset)) {
++			/* Task is running on little CPUs. */
++			if (cpuhog_ts_usec) {
++				/*
++				 * Upmigration is accounted separately, so only
++				 * record mis-scheduled time here if it happened
++				 * after upmigration.
++				 */
++				if (upmigrate_ts_usec)
++					too_small_cpu_us += segment_us;
++			}
++		} else {
++			/* Task is running on big CPUs. */
++			if (smalltask_ts_usec) {
++				/*
++				 * Downmigration is accounted separately, so
++				 * only record mis-scheduled time here if it
++				 * happened after downmigration.
++				 */
++				if (downmigrate_ts_usec)
++					too_big_cpu_us += segment_us;
++			}
++		}
++		if (cpuhog_ts_usec)
++			big_task_us += segment_us;
++		if (smalltask_ts_usec)
++			small_task_us += segment_us;
++	}
++
++	pct = (too_big_cpu_us * 100) / small_task_us;
++	rv |= (pct > MAX_INCORRECT_CLUSTER_PCT);
++	printf("Time incorrectly scheduled on big when task was small, "
++	       "after downmigration: "
++	       "%lld usec (%d%% of small task CPU time)\n", too_big_cpu_us,
++	       pct);
++	pct = (too_small_cpu_us * 100) / big_task_us;
++	rv |= (pct > MAX_INCORRECT_CLUSTER_PCT);
++	printf("Time incorrectly scheduled on small when task was big, "
++	       "after upmigration: "
++	       "%lld usec (%d%% of big task CPU time)\n", too_small_cpu_us,
++	       pct);
++
++	printf("small task time: %lld\nbig task time: %lld\n",
++	       small_task_us, big_task_us);
++
++	printf("Maximum upmigration time: %lld\n",
++	       max_upmigrate_latency_usec);
++	printf("Maximum downmigration time: %lld\n",
++	       max_downmigrate_latency_usec);
++
++	return (rv ||
++		max_upmigrate_latency_usec > MAX_UPMIGRATE_LATENCY_US ||
++		max_downmigrate_latency_usec > MAX_DOWNMIGRATE_LATENCY_US);
++}
++
++static void run(void)
++{
++	pthread_t task_thread;
++
++	tst_res(TINFO, "Maximum incorrect cluster time percentage: %d%%",
++		MAX_INCORRECT_CLUSTER_PCT);
++	tst_res(TINFO, "Maximum downmigration latency: %d usec",
++		MAX_DOWNMIGRATE_LATENCY_US);
++	tst_res(TINFO, "Maximum upmigration latency: %d usec",
++		MAX_UPMIGRATE_LATENCY_US);
++
++	printf("Task alternating between big and small for %d sec\n",
++	       BURN_SEC * NUM_LOOPS * 2);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
++	SAFE_PTHREAD_JOIN(task_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Task placement and migration latency goals "
++			"were not met.\n");
++	else
++		tst_res(TPASS, "Task placement and migration latency goals "
++			"were met.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/eas_small_to_big.c b/testcases/kernel/sched/eas/eas_small_to_big.c
+new file mode 100644
+index 000000000..27e4a14be
+--- /dev/null
++++ b/testcases/kernel/sched/eas/eas_small_to_big.c
+@@ -0,0 +1,173 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A task executes as small then as big. Upmigration latency and task placement
++ * are verified.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <sys/types.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++static int task_tid;
++
++#define MAX_UPMIGRATE_LATENCY_US 100000
++#define MAX_INCORRECT_CLUSTER_PCT 10
++#define BURN_SEC 3
++static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	task_tid = gettid();
++
++	printf("Small task executing for %dms...\n", BURN_SEC);
++	burn(BURN_SEC * USEC_PER_SEC, 1);
++
++	printf("Changing to big task...\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "CPU HOG");
++	burn(BURN_SEC * USEC_PER_SEC, 0);
++
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i, pct, rv = 0;
++	unsigned long long exec_start_us = 0;
++	unsigned long long too_big_cpu_us = 0;
++	unsigned long long too_small_cpu_us = 0;
++	unsigned long long small_task_us = 0;
++	unsigned long long big_task_us = 0;
++	unsigned long long cpuhog_ts_usec = 0;
++	unsigned long long upmigrate_ts_usec = 0;
++	unsigned long long upmigrate_latency_usec = 0;
++	cpu_set_t cpuset;
++
++	if (find_cpus_with_capacity(0, &cpuset)) {
++		printf("Failed to find the CPUs in the little cluster.\n");
++		return -1;
++	}
++
++	for (i = 0; i < num_trace_records; i++) {
++		unsigned long long segment_us;
++		struct trace_sched_switch *t = trace[i].event_data;
++
++		if (trace[i].event_type == TRACE_RECORD_TRACING_MARK_WRITE &&
++			   !strcmp(trace[i].event_data, "CPU HOG")) {
++			cpuhog_ts_usec = TS_TO_USEC(trace[i].ts);
++			continue;
++		}
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++		if (t->next_pid == task_tid) {
++			/* Start of task execution segment. */
++			if (exec_start_us) {
++				printf("Trace parse fail: double exec start\n");
++				return -1;
++			}
++			exec_start_us = TS_TO_USEC(trace[i].ts);
++			if (cpuhog_ts_usec && !upmigrate_ts_usec &&
++			    !CPU_ISSET(trace[i].cpu, &cpuset))
++				upmigrate_ts_usec = exec_start_us;
++			continue;
++		}
++		if (t->prev_pid != task_tid)
++			continue;
++		/* End of task execution segment. */
++		segment_us = TS_TO_USEC(trace[i].ts);
++		segment_us -= exec_start_us;
++		exec_start_us = 0;
++		if (CPU_ISSET(trace[i].cpu, &cpuset)) {
++			/* Task is running on little CPUs. */
++			if (cpuhog_ts_usec) {
++				/*
++				 * Upmigration is accounted separately, so only
++				 * record mis-scheduled time here if it happened
++				 * after upmigration.
++				 */
++				if (upmigrate_ts_usec)
++					too_small_cpu_us += segment_us;
++			}
++		} else {
++			/* Task is running on big CPUs. */
++			if (!cpuhog_ts_usec)
++				too_big_cpu_us += segment_us;
++		}
++		if (cpuhog_ts_usec)
++			big_task_us += segment_us;
++		else
++			small_task_us += segment_us;
++	}
++
++	pct = (too_big_cpu_us * 100) / small_task_us;
++	rv |= (pct > MAX_INCORRECT_CLUSTER_PCT);
++	printf("Time incorrectly scheduled on big when task was small: "
++	       "%lld usec (%d%% of small task CPU time)\n", too_big_cpu_us,
++	       pct);
++	pct = (too_small_cpu_us * 100) / big_task_us;
++	rv |= (pct > MAX_INCORRECT_CLUSTER_PCT);
++	printf("Time incorrectly scheduled on small when task was big, "
++	       "after upmigration: "
++	       "%lld usec (%d%% of big task CPU time)\n", too_small_cpu_us,
++	       pct);
++
++	if (upmigrate_ts_usec) {
++		upmigrate_latency_usec = upmigrate_ts_usec - cpuhog_ts_usec;
++		printf("Upmigration latency: %lld usec\n",
++		       upmigrate_latency_usec);
++	} else {
++		printf("Task never upmigrated!\n");
++		upmigrate_latency_usec = UINT_MAX;
++	}
++
++	return (rv || upmigrate_latency_usec > MAX_UPMIGRATE_LATENCY_US);
++}
++
++static void run(void)
++{
++	pthread_t task_thread;
++
++	tst_res(TINFO, "Maximum incorrect cluster time percentage: %d%%",
++		MAX_INCORRECT_CLUSTER_PCT);
++	tst_res(TINFO, "Maximum downmigration latency: %d usec",
++		MAX_UPMIGRATE_LATENCY_US);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&task_thread, NULL, task_fn, NULL);
++	SAFE_PTHREAD_JOIN(task_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Task placement and migration latency goals "
++			"were not met.\n");
++	else
++		tst_res(TPASS, "Task placement and migration latency goals "
++			"were met.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/eas_two_big_three_small.c b/testcases/kernel/sched/eas/eas_two_big_three_small.c
+new file mode 100644
+index 000000000..000b9425b
+--- /dev/null
++++ b/testcases/kernel/sched/eas/eas_two_big_three_small.c
+@@ -0,0 +1,143 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * Two big and three small tasks execute. Task placement is verified.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++static int task_tids[5];
++
++#define MAX_INCORRECT_CLUSTER_PCT 10
++#define BURN_SEC 3
++static void *task_fn(void *arg)
++{
++	int id = (int *)arg - task_tids;
++
++	task_tids[id] = gettid();
++
++	/* Tasks 0-2 are small, 3-4 are big. */
++	burn(BURN_SEC * USEC_PER_SEC, id < 3 ? 1 : 0);
++
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i, j, pct, rv = 0;
++	unsigned long long exec_start_us[5] = { 0, 0, 0, 0, 0 };
++	unsigned long long incorrect_us[5] = { 0, 0, 0, 0, 0 };
++	unsigned long long total_us[5] = { 0, 0, 0, 0, 0 };
++	cpu_set_t cpuset;
++
++	if (find_cpus_with_capacity(0, &cpuset)) {
++		printf("Failed to find the CPUs in the little cluster.\n");
++		return -1;
++	}
++
++	for (i = 0; i < num_trace_records; i++) {
++		struct trace_sched_switch *t = trace[i].event_data;
++		unsigned long long segment_us;
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++
++		/* Is this the start of an execution segment? */
++		for (j = 0; j < 5; j++) {
++			if (t->next_pid != task_tids[j])
++				continue;
++			/* Start of execution segment for task j */
++			if (exec_start_us[j]) {
++				printf("Trace parse fail: double exec start\n");
++				return -1;
++			}
++			exec_start_us[j] = TS_TO_USEC(trace[i].ts);
++		}
++
++		/* Is this the end of an execution segment? */
++		for (j = 0; j < 5; j++) {
++			if (t->prev_pid != task_tids[j])
++				continue;
++			/* End of execution segment for task j */
++			segment_us = TS_TO_USEC(trace[i].ts);
++			segment_us -= exec_start_us[j];
++			exec_start_us[j] = 0;
++			if (CPU_ISSET(trace[i].cpu, &cpuset) && j > 2)
++				incorrect_us[j] += segment_us;
++			if (!CPU_ISSET(trace[i].cpu, &cpuset) && j < 3)
++				incorrect_us[j] += segment_us;
++			total_us[j] += segment_us;
++
++		}
++	}
++
++	for (i = 0; i < 3; i++) {
++		pct = (incorrect_us[i] * 100) / total_us[i];
++		rv |= (pct > MAX_INCORRECT_CLUSTER_PCT);
++		printf("Total time little task scheduled: %lld Time scheduled "
++		       "on big CPU: %lld (%d%%)\n", total_us[i],
++		       incorrect_us[i], pct);
++	}
++	for (i = 3; i < 5; i++) {
++		pct = (incorrect_us[i] * 100) / total_us[i];
++		rv |= (pct > MAX_INCORRECT_CLUSTER_PCT);
++		printf("Total time big task scheduled: %lld Time scheduled on "
++		       "little CPU: %lld (%d%%)\n", total_us[i],
++		       incorrect_us[i], pct);
++	}
++
++	return rv;
++}
++
++#define NUM_TASKS 5
++static void run(void)
++{
++	int i;
++	pthread_t tasks[NUM_TASKS];
++
++	tst_res(TINFO, "Maximum incorrect cluster time percentage: %d%%",
++		MAX_INCORRECT_CLUSTER_PCT);
++
++	printf("Tasks running for %d sec\n", BURN_SEC);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	for (i = 0; i < NUM_TASKS; i++)
++		SAFE_PTHREAD_CREATE(&tasks[i], NULL, task_fn, &task_tids[i]);
++	for (i = 0; i < NUM_TASKS; i++)
++		SAFE_PTHREAD_JOIN(tasks[i], NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Task placement goals were not met.\n");
++	else
++		tst_res(TPASS, "Task placement goals were met.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/run_tests.sh b/testcases/kernel/sched/eas/run_tests.sh
+new file mode 100644
+index 000000000..f6258dd58
+--- /dev/null
++++ b/testcases/kernel/sched/eas/run_tests.sh
+@@ -0,0 +1,21 @@
++#!/bin/sh
++
++cd /data/nativetest64/ltp/testcases/bin
++
++./eas_one_small_task
++./eas_one_big_task
++./eas_small_to_big
++./eas_big_to_small
++./eas_small_big_toggle
++./eas_two_big_three_small
++
++./sched_cfs_prio
++./sched_dl_runtime
++./sched_latency_dl
++./sched_latency_rt
++./sched_prio_3_fifo
++./sched_prio_3_rr
++
++./sugov_latency
++./sugov_wakeups
++./sched_boost
+diff --git a/testcases/kernel/sched/eas/sched_boost.c b/testcases/kernel/sched/eas/sched_boost.c
+new file mode 100644
+index 000000000..1f65b65e6
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sched_boost.c
+@@ -0,0 +1,178 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A test schedboost cgroup is created and a task is put inside it. The
++ * utilization of that task is monitored and verified while changing the boost
++ * of the test schedboost cgroup to different values.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <semaphore.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++#include "tst_safe_macros.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sugov_util_update sched_switch"
++
++static sem_t test_sem;
++static sem_t result_sem;
++static int test_cpu;
++static int task_pid;
++static unsigned int test_index = 0;
++static int test_boost[] = { 0, 25, 50, 75, 100 };
++#define NUM_TESTS (sizeof(test_boost)/sizeof(int))
++static int test_utils[NUM_TESTS];
++#define STUNE_TEST_PATH "/dev/stune/test"
++#define STUNE_ROOT_TASKS "/dev/stune/tasks"
++
++#define BUSY_USEC 1000
++#define SLEEP_USEC 19000
++/* Run each test for one second. */
++#define TEST_LENGTH_USEC USEC_PER_SEC
++static void do_work(void)
++{
++	struct timespec ts;
++	unsigned long long now_usec, end_usec;
++
++	/* Calculate overall end time. */
++	if (clock_gettime(CLOCK_MONOTONIC, &ts)) {
++		printf("clock_gettime() reported an error\n");
++		return;
++	}
++	now_usec = ts.tv_sec * USEC_PER_SEC + ts.tv_nsec / 1000;
++	end_usec = now_usec + TEST_LENGTH_USEC;
++
++	while (now_usec < end_usec) {
++		burn(BUSY_USEC, 0);
++		usleep(SLEEP_USEC);
++		if (clock_gettime(CLOCK_MONOTONIC, &ts)) {
++			printf("clock_gettime() reported an error\n");
++			return;
++		}
++		now_usec = ts.tv_sec * USEC_PER_SEC + ts.tv_nsec / 1000;
++	}
++}
++
++static void *test_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	unsigned int tests_done = 0;
++
++	affine(test_cpu);
++
++	task_pid = gettid();
++	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/tasks", "%d", task_pid);
++	while(tests_done < NUM_TESTS) {
++		sem_wait(&test_sem);
++		do_work();
++		sem_post(&result_sem);
++		tests_done++;
++	}
++	SAFE_FILE_PRINTF(STUNE_ROOT_TASKS, "%d", task_pid);
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i;
++	int max_util_seen = 0;
++
++	for (i = 0; i < num_trace_records; i++)
++		if (trace[i].event_type == TRACE_RECORD_SUGOV_UTIL_UPDATE) {
++			struct trace_sugov_util_update *t =
++				trace[i].event_data;
++			if (t->cpu == test_cpu && t->util > max_util_seen)
++				max_util_seen = t->util;
++		}
++
++	test_utils[test_index] = max_util_seen;
++	printf("Max util seen for boost %d: %d\n", test_boost[test_index],
++	       max_util_seen);
++	return 0;
++}
++
++static void run_test(void)
++{
++	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/schedtune.boost",
++			 "%d", test_boost[test_index]);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++	sem_post(&test_sem);
++	sem_wait(&result_sem);
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++	parse_results();
++	test_index++;
++}
++
++#define TEST_MARGIN 50
++static void check_results(void)
++{
++	unsigned int i;
++	for (i = 0; i < NUM_TESTS; i++) {
++		int target_util = test_boost[i] * 10;
++		if (test_utils[i] < target_util - TEST_MARGIN ||
++		    test_utils[i] > target_util + TEST_MARGIN)
++			tst_res(TFAIL, "Test %i (boost %d) failed with "
++				"util %d (allowed %d - %d).\n",
++				i, test_boost[i], test_utils[i],
++				target_util - TEST_MARGIN,
++				target_util + TEST_MARGIN);
++	}
++	tst_res(TPASS, "Boosted utilizations within expected range.");
++}
++
++static void run(void)
++{
++	pthread_t test_thread;
++
++	sem_init(&test_sem, 0, 0);
++	sem_init(&result_sem, 0, 0);
++
++	test_cpu = tst_ncpus() - 1;
++	printf("Running %ld tests for %d sec\n", NUM_TESTS,
++	       TEST_LENGTH_USEC / USEC_PER_SEC);
++	printf("CPU hog will be bound to CPU %d.\n", test_cpu);
++
++	/*
++	 * If this fails due to ENOSPC the definition of BOOSTGROUPS_COUNT in
++	 * kernel/sched/tune.c needs to be increased.
++	 */
++	SAFE_MKDIR(STUNE_TEST_PATH, 0777);
++	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/schedtune.colocate",
++			 "0");
++	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/schedtune.prefer_idle",
++			 "0");
++	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/schedtune.sched_boost_enabled",
++			 "1");
++	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/schedtune.sched_boost_no_override",
++			 "0");
++
++	SAFE_PTHREAD_CREATE(&test_thread, NULL, test_fn, NULL);
++
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++
++	while (test_index < NUM_TESTS)
++		run_test();
++
++	SAFE_PTHREAD_JOIN(test_thread, NULL);
++	SAFE_RMDIR(STUNE_TEST_PATH);
++	check_results();
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sched_cfs_prio.c b/testcases/kernel/sched/eas/sched_cfs_prio.c
+new file mode 100644
+index 000000000..92d2dced6
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sched_cfs_prio.c
+@@ -0,0 +1,211 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * Some CFS tasks are started with different priorities. The tasks are CPU hogs
++ * and affined to the same CPU. Their runtime is checked to see that it
++ * corresponds to that which is expected given the task priorities.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <semaphore.h>
++#include <stdlib.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++static int cfs_task_tids[4];
++/* If testing a nice value of -1, task_fn's use of nice() must be amended to
++ * check for an error properly. */
++static int nice_vals[] = { -15, -5, 5, 15 };
++/* These come from sched_prio_to_weight in kernel/sched/core.c. */
++static int prio_to_weight[] = { 29154, 3121, 335, 36 };
++
++#define TEST_TASK_SECONDS 5
++static void *task_fn(void *arg)
++{
++	int idx = (int *)arg - cfs_task_tids;
++
++	cfs_task_tids[idx] = gettid();
++
++	affine(0);
++	if (nice(nice_vals[idx]) != nice_vals[idx]) {
++		printf("Error calling nice(%d)\n", nice_vals[idx]);
++		return NULL;
++	}
++	burn(TEST_TASK_SECONDS * USEC_PER_SEC, 0);
++	return NULL;
++}
++
++#define LOWER_BOUND_PCT 80
++#define UPPER_BOUND_PCT 105
++#define LOWER_BOUND_US 20000
++#define UPPER_BOUND_US 30000
++
++int check_bounds(long long expected_us, long long runtime_us)
++{
++	int rv = 0;
++	long long lower_bound, lower_bound_pct, lower_bound_us;
++	long long upper_bound, upper_bound_pct, upper_bound_us;
++
++	lower_bound_pct = (LOWER_BOUND_PCT / (100 * expected_us));
++	lower_bound_us = (expected_us - LOWER_BOUND_US);
++	if (lower_bound_us > lower_bound_pct)
++		lower_bound = lower_bound_us;
++	else
++		lower_bound = lower_bound_pct;
++	upper_bound_pct = (UPPER_BOUND_PCT / (100 * expected_us));
++	upper_bound_us = (expected_us + UPPER_BOUND_US);
++	if (upper_bound_us > upper_bound_pct)
++		upper_bound = upper_bound_us;
++	else
++		upper_bound = upper_bound_pct;
++
++	if (runtime_us < lower_bound) {
++		printf("  lower bound of %lld ms not met\n",
++		       lower_bound/1000);
++		rv = 1;
++	}
++	if (runtime_us > upper_bound) {
++		printf("  upper bound of %lld ms exceeded\n",
++		       upper_bound/1000);
++		rv = 1;
++	}
++	return rv;
++}
++
++static int parse_results(void)
++{
++	int i, j, weight_sum;
++	int rv = 0;
++	unsigned long long start_ts_us[4] = { 0, 0, 0, 0 };
++	long long runtime_us[4] = { 0, 0, 0, 0 };
++	long long expected_us[4];
++
++	for (i = 0; i < num_trace_records; i++) {
++		struct trace_sched_switch *t = trace[i].event_data;
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++
++		for (j = 0; j < 4; j++) {
++			if (t->prev_pid == cfs_task_tids[j]) {
++				if (!start_ts_us[j]) {
++					printf("Trace parse error, start_ts_us "
++					       "unset at segment end!\n");
++					return -1;
++				}
++				runtime_us[j] += TS_TO_USEC(trace[i].ts) -
++					start_ts_us[j];
++				start_ts_us[j] = 0;
++			}
++			if (t->next_pid == cfs_task_tids[j]) {
++				if (start_ts_us[j]) {
++					printf("Trace parse error, start_ts_us "
++					       "already set at segment "
++					       "start!\n");
++					return -1;
++				}
++				start_ts_us[j] = TS_TO_USEC(trace[i].ts);
++			}
++		}
++	}
++
++	/*
++	 * Task prio to weight values are defined in the kernel at the end of
++	 * kernel/sched/core.c (as of 4.19).
++	 * -15: 29154
++	 *  -5: 3121
++	 *   5: 335
++	 *  15: 36
++	 *  Sum of weights: 29154 + 3121 + 335 + 36 = 32646
++	 *  Expected task runtime % (time with 5 second test):
++	 *  29154/32646 = 89.3%, 4465ms
++	 *  3121/32646 = 9.56%, 478ms
++	 *  335/32646 = 1.02%, 51ms
++	 *  36/32646 = 0.11%, 5.5ms
++	 */
++
++	weight_sum = 0;
++	for (i = 0; i < 4; i++)
++		weight_sum += prio_to_weight[i];
++	for (i = 0; i < 4; i++) {
++		/*
++		 * Expected task runtime:
++		 * (prio_to_weight[i] / weight_sum) * TEST_TASK_SECONDS
++		 */
++		expected_us[i] = TEST_TASK_SECONDS * USEC_PER_SEC;
++		expected_us[i] *= prio_to_weight[i];
++		expected_us[i] /= weight_sum;
++	}
++
++	printf("Task runtimes:\n");
++
++	printf("Task a (nice -15): %8lld ms (expected %8lld ms)\n",
++	       runtime_us[0] / 1000, expected_us[0] / 1000);
++	rv |= check_bounds(expected_us[0], runtime_us[0]);
++
++	printf("Task b (nice -5) : %8lld ms (expected %8lld ms)\n",
++	       runtime_us[1] / 1000, expected_us[1] / 1000);
++	rv |= check_bounds(expected_us[1], runtime_us[1]);
++
++	printf("Task c (nice 5)  : %8lld ms (expected %8lld ms)\n",
++	       runtime_us[2] / 1000, expected_us[2] / 1000);
++	rv |= check_bounds(expected_us[2], runtime_us[2]);
++
++	printf("Task d (nice 15) : %8lld ms (expected %8lld ms)\n",
++	       runtime_us[3] / 1000, expected_us[3] / 1000);
++	rv |= check_bounds(expected_us[3], runtime_us[3]);
++
++	return rv;
++}
++
++#define NUM_TASKS 4
++static void run(void)
++{
++	pthread_t tasks[NUM_TASKS];
++	int i;
++
++	printf("Running %d CFS tasks concurrently for %d sec\n",
++	       NUM_TASKS, TEST_TASK_SECONDS);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	for (i = 0; i < NUM_TASKS; i++)
++		SAFE_PTHREAD_CREATE(&tasks[i], NULL, task_fn,
++				    &cfs_task_tids[i]);
++	for (i = 0; i < NUM_TASKS; i++)
++		SAFE_PTHREAD_JOIN(tasks[i], NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Task runtimes not within allowed margins "
++			"of expected values.\n");
++	else
++		tst_res(TPASS, "Task runtimes within allowed margins "
++			"of expected values.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sched_dl_runtime.c b/testcases/kernel/sched/eas/sched_dl_runtime.c
+new file mode 100644
+index 000000000..27f0564d4
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sched_dl_runtime.c
+@@ -0,0 +1,198 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A DL task runs. Its execution pattern is checked to see that the constraints
++ * it has been given (runtime, period, deadline) are satisfied.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <semaphore.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "lapi/syscalls.h"
++#include "lapi/sched.h"
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++static int dl_task_tid;
++
++/*
++ * It is not possible to restrict CPU affinity on SCHED_DEADLINE tasks, so we do
++ * not force the CFS and DL tasks to be on the same CPU in this test. CPUsets
++ * can be used to do this, perhaps implement that later.
++ */
++
++static void *dl_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	struct sched_attr attr;
++	struct timespec ts;
++	uint64_t now_usec, end_usec;
++
++	attr.size = sizeof(attr);
++	attr.sched_flags = 0;
++	attr.sched_nice = 0;
++	attr.sched_priority = 0;
++
++	attr.sched_policy = SCHED_DEADLINE;
++	attr.sched_runtime = 5000000;
++	attr.sched_period = 20000000;
++	attr.sched_deadline = 10000000;
++
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "DL START");
++	ERROR_CHECK(sched_setattr(0, &attr, 0));
++
++	dl_task_tid = gettid();
++
++	if (clock_gettime(CLOCK_MONOTONIC, &ts)) {
++		printf("clock_gettime() reported an error\n");
++		return NULL;
++	}
++	now_usec = (ts.tv_sec) * USEC_PER_SEC + (ts.tv_nsec / 1000);
++	end_usec = now_usec + 3 * USEC_PER_SEC;
++	while (now_usec < end_usec) {
++		/* Run for 5ms */
++		burn(5000, 0);
++
++		/* Wait until next 20ms boundary. sched_yield() for DL tasks
++		 * throttles the task until its next period. */
++		sched_yield();
++		if (clock_gettime(CLOCK_MONOTONIC, &ts)) {
++			printf("clock_gettime() reported an error\n");
++			return NULL;
++		}
++		now_usec = (ts.tv_sec) * USEC_PER_SEC + (ts.tv_nsec / 1000);
++	}
++
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i;
++	unsigned long long next_period_ts_us = 0;
++	unsigned long long next_deadline_ts_us = 0;
++	unsigned long long start_ts_us = 0;
++	unsigned long long period_exec_time_us = 0;
++	int periods_parsed = 0;
++
++	for (i = 0; i < num_trace_records; i++) {
++		if (trace[i].event_type == TRACE_RECORD_SCHED_SWITCH) {
++			struct trace_sched_switch *t = trace[i].event_data;
++			if (t->prev_pid == dl_task_tid) {
++				unsigned long long end_ts_us;
++				if (!start_ts_us) {
++					printf("Trace parse error, "
++					       "start_ts_us = 0\n");
++					return -1;
++				}
++				if (TS_TO_USEC(trace[i].ts) >
++				    next_period_ts_us) {
++					printf("Task ran past end of "
++					       "period!\n");
++					return -1;
++				}
++				end_ts_us = TS_TO_USEC(trace[i].ts);
++				if (end_ts_us > next_deadline_ts_us)
++					end_ts_us = next_deadline_ts_us;
++				if (start_ts_us > next_deadline_ts_us)
++					start_ts_us = next_deadline_ts_us;
++				period_exec_time_us +=
++					(end_ts_us - start_ts_us);
++				start_ts_us = 0;
++			}
++		}
++		if (next_period_ts_us &&
++		    TS_TO_USEC(trace[i].ts) > next_period_ts_us) {
++			if (start_ts_us) {
++				printf("Task was running across period boundary!\n");
++				return -1;
++			}
++			if (period_exec_time_us < 5000) {
++				printf("Missed deadline at %llu!\n",
++				       next_deadline_ts_us);
++				return -1;
++			}
++			periods_parsed++;
++			next_deadline_ts_us += 20000;
++			next_period_ts_us += 20000;
++		}
++		if (trace[i].event_type == TRACE_RECORD_SCHED_SWITCH) {
++			struct trace_sched_switch *t = trace[i].event_data;
++			if (t->next_pid == dl_task_tid) {
++
++				if (start_ts_us) {
++					printf("Trace parse error, "
++					       "start_ts_us != 0\n");
++					return -1;
++				}
++				start_ts_us = TS_TO_USEC(trace[i].ts);
++				if (!next_period_ts_us) {
++					/*
++					 * Initialize period and deadline the
++					 * first time the DL task runs.
++					 */
++					next_period_ts_us = start_ts_us + 20000;
++					next_deadline_ts_us = start_ts_us +
++						10000;
++				}
++			}
++		}
++	}
++	if (periods_parsed >= 149)
++		printf("%d periods parsed successfully.\n", periods_parsed);
++	else
++		printf("Only %d periods parsed successfully.\n",
++		       periods_parsed);
++	return 0;
++}
++
++static void run(void)
++{
++	pthread_t dl_thread;
++	pthread_attr_t dl_thread_attrs;
++	struct sched_param dl_thread_sched_params;
++
++	ERROR_CHECK(pthread_attr_init(&dl_thread_attrs));
++	ERROR_CHECK(pthread_attr_setinheritsched(&dl_thread_attrs,
++						 PTHREAD_EXPLICIT_SCHED));
++	ERROR_CHECK(pthread_attr_setschedpolicy(&dl_thread_attrs,
++						SCHED_FIFO));
++	dl_thread_sched_params.sched_priority = 80;
++	ERROR_CHECK(pthread_attr_setschedparam(&dl_thread_attrs,
++					       &dl_thread_sched_params));
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&dl_thread, NULL, dl_fn, NULL);
++	SAFE_PTHREAD_JOIN(dl_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "DL task did not execute as expected.\n");
++	else
++		tst_res(TPASS, "DL task ran as expected.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sched_latency_dl.c b/testcases/kernel/sched/eas/sched_latency_dl.c
+new file mode 100644
+index 000000000..486c4cf4d
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sched_latency_dl.c
+@@ -0,0 +1,164 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A DL task and a CFS task are created and affined to the same CPU. The CFS
++ * task is a CPU hog. The latency to switch to the DL task (which should preempt
++ * the CFS task immediately) is checked.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <semaphore.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "lapi/syscalls.h"
++#include "lapi/sched.h"
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_wakeup sched_switch"
++
++#define MAX_EXEC_LATENCY_US 100
++
++static int dl_task_tid;
++static sem_t sem;
++
++/*
++ * It is not possible to restrict CPU affinity on SCHED_DEADLINE tasks, so we do
++ * not force the CFS and DL tasks to be on the same CPU in this test. CPUsets
++ * can be used to do this, perhaps implement that later.
++ */
++
++static void *dl_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	struct sched_attr attr;
++
++	attr.size = sizeof(attr);
++	attr.sched_flags = 0;
++	attr.sched_nice = 0;
++	attr.sched_priority = 0;
++
++	attr.sched_policy = SCHED_DEADLINE;
++	attr.sched_runtime = 10000000;
++	attr.sched_period = 30000000;
++	attr.sched_deadline = 30000000;
++
++	ERROR_CHECK(sched_setattr(0, &attr, 0));
++
++	dl_task_tid = gettid();
++	sem_wait(&sem);
++	return NULL;
++}
++
++static void *cfs_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	usleep(5000);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "WAKING");
++	sem_post(&sem);
++
++	burn(USEC_PER_SEC, 0);
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i;
++	unsigned long long dl_wakeup_ts_us = 0;
++	unsigned long long dl_exec_ts_us = 0;
++	unsigned long dl_exec_latency_us;
++
++	for (i = 0; i < num_trace_records; i++) {
++		if (trace[i].event_type == TRACE_RECORD_SCHED_WAKEUP) {
++			struct trace_sched_wakeup *t = trace[i].event_data;
++			if (t->pid != dl_task_tid)
++				continue;
++			dl_wakeup_ts_us = TS_TO_USEC(trace[i].ts);
++			continue;
++		}
++		if (dl_wakeup_ts_us &&
++		    trace[i].event_type == TRACE_RECORD_SCHED_SWITCH) {
++			struct trace_sched_switch *t = trace[i].event_data;
++			if (t->next_pid != dl_task_tid)
++				continue;
++			if (!dl_wakeup_ts_us) {
++				printf("DL task woke without being woken!\n");
++				return -1;
++			}
++			dl_exec_ts_us = TS_TO_USEC(trace[i].ts);
++			break;
++		}
++	}
++	if (!dl_wakeup_ts_us || !dl_exec_ts_us) {
++		printf("DL task either wasn't woken or didn't wake up.\n");
++		return -1;
++	}
++	dl_exec_latency_us = dl_exec_ts_us - dl_wakeup_ts_us;
++	printf("DL exec latency: %ld usec\n", dl_exec_latency_us);
++	return (dl_exec_latency_us > MAX_EXEC_LATENCY_US);
++}
++
++static void run(void)
++{
++	pthread_t cfs_thread;
++	pthread_t dl_thread;
++	pthread_attr_t cfs_thread_attrs;
++	pthread_attr_t dl_thread_attrs;
++	struct sched_param cfs_thread_sched_params;
++	struct sched_param dl_thread_sched_params;
++
++	ERROR_CHECK(pthread_attr_init(&cfs_thread_attrs));
++	ERROR_CHECK(pthread_attr_setinheritsched(&cfs_thread_attrs,
++						 PTHREAD_EXPLICIT_SCHED));
++	ERROR_CHECK(pthread_attr_setschedpolicy(&cfs_thread_attrs,
++						SCHED_OTHER));
++	cfs_thread_sched_params.sched_priority = 0;
++	ERROR_CHECK(pthread_attr_setschedparam(&cfs_thread_attrs,
++					       &cfs_thread_sched_params));
++
++	ERROR_CHECK(pthread_attr_init(&dl_thread_attrs));
++	ERROR_CHECK(pthread_attr_setinheritsched(&dl_thread_attrs,
++						 PTHREAD_EXPLICIT_SCHED));
++	ERROR_CHECK(pthread_attr_setschedpolicy(&dl_thread_attrs,
++						SCHED_FIFO));
++	dl_thread_sched_params.sched_priority = 80;
++	ERROR_CHECK(pthread_attr_setschedparam(&dl_thread_attrs,
++					       &dl_thread_sched_params));
++
++	sem_init(&sem, 0, 0);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&cfs_thread, &cfs_thread_attrs, cfs_fn, NULL);
++	SAFE_PTHREAD_CREATE(&dl_thread, &dl_thread_attrs, dl_fn, NULL);
++	SAFE_PTHREAD_JOIN(cfs_thread, NULL);
++	SAFE_PTHREAD_JOIN(dl_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "DL task did not execute within expected "
++			"latency of %d usec.\n", MAX_EXEC_LATENCY_US);
++	else
++		tst_res(TPASS, "DL task executed within expected latency "
++			"of %d usec.\n", MAX_EXEC_LATENCY_US);
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sched_latency_rt.c b/testcases/kernel/sched/eas/sched_latency_rt.c
+new file mode 100644
+index 000000000..3a5a91fde
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sched_latency_rt.c
+@@ -0,0 +1,146 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A CFS task and an RT task are created and affined to the same CPU. The CFS
++ * task is a CPU hog. The latency for the RT task to execute after it has been
++ * woken is measured and verified.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <semaphore.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_wakeup sched_switch"
++
++#define MAX_EXEC_LATENCY_US 100
++
++static int rt_task_tid;
++static sem_t sem;
++
++static void *rt_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_task_tid = gettid();
++	affine(0);
++	sem_wait(&sem);
++	return NULL;
++}
++
++#define BURN_MSEC 1000
++static void *cfs_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	affine(0);
++
++	usleep(5000);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "WAKING");
++	sem_post(&sem);
++
++	burn(USEC_PER_SEC, 0);
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i;
++	unsigned long long rt_wakeup_ts_us = 0;
++	unsigned long long rt_exec_ts_us = 0;
++	unsigned long rt_exec_latency_us;
++
++	for (i = 0; i < num_trace_records; i++) {
++		if (trace[i].event_type == TRACE_RECORD_SCHED_WAKEUP) {
++			struct trace_sched_wakeup *t = trace[i].event_data;
++			if (t->pid != rt_task_tid)
++				continue;
++			rt_wakeup_ts_us = TS_TO_USEC(trace[i].ts);
++			continue;
++		}
++		if (rt_wakeup_ts_us &&
++		    trace[i].event_type == TRACE_RECORD_SCHED_SWITCH) {
++			struct trace_sched_switch *t = trace[i].event_data;
++			if (t->next_pid != rt_task_tid)
++				continue;
++			if (!rt_wakeup_ts_us) {
++				printf("RT task woke without being woken!\n");
++				return -1;
++			}
++			rt_exec_ts_us = TS_TO_USEC(trace[i].ts);
++			break;
++		}
++	}
++	if (!rt_wakeup_ts_us || !rt_exec_ts_us) {
++		printf("RT task either wasn't woken or didn't wake up.\n");
++		return -1;
++	}
++	rt_exec_latency_us = rt_exec_ts_us - rt_wakeup_ts_us;
++	printf("RT exec latency: %ld usec\n", rt_exec_latency_us);
++	return (rt_exec_latency_us > MAX_EXEC_LATENCY_US);
++}
++
++static void run(void)
++{
++	pthread_t cfs_thread;
++	pthread_t rt_thread;
++	pthread_attr_t cfs_thread_attrs;
++	pthread_attr_t rt_thread_attrs;
++	struct sched_param cfs_thread_sched_params;
++	struct sched_param rt_thread_sched_params;
++
++	ERROR_CHECK(pthread_attr_init(&cfs_thread_attrs));
++	ERROR_CHECK(pthread_attr_setinheritsched(&cfs_thread_attrs,
++						 PTHREAD_EXPLICIT_SCHED));
++	ERROR_CHECK(pthread_attr_setschedpolicy(&cfs_thread_attrs,
++						SCHED_OTHER));
++	cfs_thread_sched_params.sched_priority = 0;
++	ERROR_CHECK(pthread_attr_setschedparam(&cfs_thread_attrs,
++					       &cfs_thread_sched_params));
++
++	ERROR_CHECK(pthread_attr_init(&rt_thread_attrs));
++	ERROR_CHECK(pthread_attr_setinheritsched(&rt_thread_attrs,
++						 PTHREAD_EXPLICIT_SCHED));
++	ERROR_CHECK(pthread_attr_setschedpolicy(&rt_thread_attrs,
++						SCHED_FIFO));
++	rt_thread_sched_params.sched_priority = 80;
++	ERROR_CHECK(pthread_attr_setschedparam(&rt_thread_attrs,
++					       &rt_thread_sched_params));
++
++	sem_init(&sem, 0, 0);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&cfs_thread, &cfs_thread_attrs, cfs_fn, NULL);
++	SAFE_PTHREAD_CREATE(&rt_thread, &rt_thread_attrs, rt_fn, NULL);
++	SAFE_PTHREAD_JOIN(cfs_thread, NULL);
++	SAFE_PTHREAD_JOIN(rt_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "RT task did not execute within required "
++			"latency of %d usec.\n", MAX_EXEC_LATENCY_US);
++	else
++		tst_res(TPASS, "RT task executed within required latency "
++			"of %d usec..\n", MAX_EXEC_LATENCY_US);
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sched_prio_3_fifo.c b/testcases/kernel/sched/eas/sched_prio_3_fifo.c
+new file mode 100644
+index 000000000..4244f17c0
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sched_prio_3_fifo.c
+@@ -0,0 +1,391 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * Six RT FIFO tasks are created and affined to the same CPU. They execute
++ * with a particular pattern of overlapping eligibility to run. The resulting
++ * execution pattern is checked to see that the tasks execute as expected given
++ * their priorities.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <semaphore.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_wakeup sched_switch sched_process_exit"
++
++static int rt_task_tids[6];
++
++/*
++ * Create two of each RT FIFO task at each priority level. Ensure that
++ * - higher priority RT tasks preempt lower priority RT tasks
++ * - newly woken RT tasks at the same priority level do not preempt currently
++ *   running RT tasks
++ *
++ * Affine all tasks to CPU 0.
++ * Have rt_low_fn 1 run first. It wakes up rt_low_fn 2, which should not run
++ * until rt_low_fn 1 sleeps/exits.
++ * rt_low_fn2 wakes rt_med_fn1. rt_med_fn1 should run immediately, then sleep,
++ * allowing rt_low_fn2 to complete.
++ * rt_med_fn1 wakes rt_med_fn2, which should not run until rt_med_fn 2
++ * sleeps/exits... (etc)
++ */
++static sem_t sem_high_b;
++static sem_t sem_high_a;
++static sem_t sem_med_b;
++static sem_t sem_med_a;
++static sem_t sem_low_b;
++static sem_t sem_low_a;
++
++enum {
++	RT_LOW_FN_A_TID = 0,
++	RT_LOW_FN_B_TID,
++	RT_MED_FN_A_TID,
++	RT_MED_FN_B_TID,
++	RT_HIGH_FN_A_TID,
++	RT_HIGH_FN_B_TID,
++};
++
++struct expected_event {
++	int event_type;
++	/*
++	 * If sched_wakeup, pid being woken.
++	 * If sched_switch, pid being switched to.
++	 */
++	int event_data;
++};
++static struct expected_event events[] = {
++	/* rt_low_fn_a wakes up rt_low_fn_b:
++	 *   sched_wakeup(rt_low_fn_b) */
++	{ .event_type = TRACE_RECORD_SCHED_WAKEUP,
++		.event_data = RT_LOW_FN_B_TID},
++	/* TODO: Expect an event for the exit of rt_low_fn_a. */
++	/* 3ms goes by, then rt_low_fn_a exits and rt_low_fn_b starts running */
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_LOW_FN_B_TID},
++	/* rt_low_fn_b wakes rt_med_fn_a which runs immediately */
++	{ .event_type = TRACE_RECORD_SCHED_WAKEUP,
++		.event_data = RT_MED_FN_A_TID},
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_MED_FN_A_TID},
++	/* rt_med_fn_a sleeps, allowing rt_low_fn_b time to exit */
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_LOW_FN_B_TID},
++	/* TODO: Expect an event for the exit of rt_low_fn_b. */
++	{ .event_type = TRACE_RECORD_SCHED_WAKEUP,
++		.event_data = RT_MED_FN_A_TID},
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_MED_FN_A_TID},
++	/* rt_med_fn_a wakes rt_med_fn_b */
++	{ .event_type = TRACE_RECORD_SCHED_WAKEUP,
++		.event_data = RT_MED_FN_B_TID},
++	/* 3ms goes by, then rt_med_fn_a exits and rt_med_fn_b starts running */
++	/* TODO: Expect an event for the exit of rt_med_fn_a */
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_MED_FN_B_TID},
++	/* rt_med_fn_b wakes up rt_high_fn_a which runs immediately */
++	{ .event_type = TRACE_RECORD_SCHED_WAKEUP,
++		.event_data = RT_HIGH_FN_A_TID},
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_HIGH_FN_A_TID},
++	/* rt_high_fn_a sleeps, allowing rt_med_fn_b time to exit */
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_MED_FN_B_TID},
++	/* TODO: Expect an event for the exit of rt_med_fn_b */
++	{ .event_type = TRACE_RECORD_SCHED_WAKEUP,
++		.event_data = RT_HIGH_FN_A_TID},
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_HIGH_FN_A_TID},
++	/* rt_high_fn_a wakes up rt_high_fn_b */
++	{ .event_type = TRACE_RECORD_SCHED_WAKEUP,
++		.event_data = RT_HIGH_FN_B_TID},
++	/* 3ms goes by, then rt_high_fn_a exits and rt_high_fn_b starts running */
++	/* TODO: Expect an event for the exit of rt_high_fn_a */
++	{ .event_type = TRACE_RECORD_SCHED_SWITCH,
++		.event_data = RT_HIGH_FN_B_TID},
++};
++
++static void *rt_high_fn_b(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_task_tids[RT_HIGH_FN_B_TID] = gettid();
++	affine(0);
++
++	/* Wait for rt_high_fn_a to wake us up. */
++	sem_wait(&sem_high_b);
++	/* Run after rt_high_fn_a exits. */
++
++	return NULL;
++}
++
++static void *rt_high_fn_a(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_task_tids[RT_HIGH_FN_A_TID] = gettid();
++	affine(0);
++
++	/* Wait for rt_med_fn_b to wake us up. */
++	sem_wait(&sem_high_a);
++
++	/* Sleep, allowing rt_med_fn_b a chance to exit. */
++	usleep(1000);
++
++	/* Wake up rt_high_fn_b. We should continue to run though. */
++	sem_post(&sem_high_b);
++
++	/* Busy wait for just a bit. */
++	burn(3000, 0);
++
++	return NULL;
++}
++
++static void *rt_med_fn_b(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_task_tids[RT_MED_FN_B_TID] = gettid();
++	affine(0);
++
++	/* Wait for rt_med_fn_a to wake us up. */
++	sem_wait(&sem_med_b);
++	/* Run after rt_med_fn_a exits. */
++
++	/* This will wake up rt_high_fn_a which will run immediately, preempting
++	 * us. */
++	sem_post(&sem_high_a);
++
++	return NULL;
++}
++
++static void *rt_med_fn_a(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_task_tids[RT_MED_FN_A_TID] = gettid();
++	affine(0);
++
++	/* Wait for rt_low_fn_b to wake us up. */
++	sem_wait(&sem_med_a);
++
++	/* Sleep, allowing rt_low_fn_b a chance to exit. */
++	usleep(3000);
++
++	/* Wake up rt_med_fn_b. We should continue to run though. */
++	sem_post(&sem_med_b);
++
++	/* Busy wait for just a bit. */
++	burn(3000, 0);
++
++	return NULL;
++}
++
++static void *rt_low_fn_b(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_task_tids[RT_LOW_FN_B_TID] = gettid();
++	affine(0);
++
++	/* Wait for rt_low_fn_a to wake us up. */
++	sem_wait(&sem_low_b);
++	/* Run after rt_low_fn_a exits. */
++
++	/* This will wake up rt_med_fn_a which will run immediately, preempting
++	 * us. */
++	sem_post(&sem_med_a);
++
++	/* So the previous sem_post isn't actually causing a sched_switch
++	 * to med_a immediately - this is running a bit longer and exiting.
++	 * Delay here. */
++	burn(1000, 0);
++
++	return NULL;
++}
++
++/* Put real task tids into the expected events. */
++static void fixup_expected_events(void)
++{
++	int i;
++	int size = sizeof(events)/sizeof(struct expected_event);
++
++	for (i = 0; i < size; i++)
++		events[i].event_data = rt_task_tids[events[i].event_data];
++}
++
++static void *rt_low_fn_a(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_task_tids[RT_LOW_FN_A_TID] = gettid();
++	affine(0);
++
++	/* Give all other tasks a chance to set their tids and block. */
++	usleep(3000);
++
++	fixup_expected_events();
++
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "TEST START");
++
++	/* Wake up rt_low_fn_b. We should continue to run though. */
++	sem_post(&sem_low_b);
++
++	/* Busy wait for just a bit. */
++	burn(3000, 0);
++
++	return NULL;
++}
++
++/* Returns whether the given tid is a tid of one of the RT tasks in this
++ * testcase. */
++static int rt_tid(int tid)
++{
++	int i;
++	for (i = 0; i < 6; i++)
++		if (rt_task_tids[i] == tid)
++			return 1;
++	return 0;
++}
++
++static int parse_results(void)
++{
++	int i;
++	int test_start = 0;
++	int event_idx = 0;
++	int events_size = sizeof(events)/sizeof(struct expected_event);
++
++	for (i = 0; i < num_trace_records; i++) {
++		if (trace[i].event_type == TRACE_RECORD_TRACING_MARK_WRITE &&
++		    !strcmp(trace[i].event_data, "TEST START"))
++			test_start = 1;
++
++		if (!test_start)
++			continue;
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_WAKEUP &&
++		    trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++
++		if (trace[i].event_type == TRACE_RECORD_SCHED_SWITCH) {
++			struct trace_sched_switch *t = trace[i].event_data;
++			if (!rt_tid(t->next_pid))
++				continue;
++			if (events[event_idx].event_type !=
++			    TRACE_RECORD_SCHED_SWITCH ||
++			    events[event_idx].event_data !=
++			    t->next_pid) {
++				printf("Test case failed, expecting event "
++				       "index %d type %d for tid %d, "
++				       "got sched switch to tid %d\n",
++				       event_idx,
++				       events[event_idx].event_type,
++				       events[event_idx].event_data,
++				       t->next_pid);
++				return -1;
++			}
++			event_idx++;
++		}
++
++		if (trace[i].event_type == TRACE_RECORD_SCHED_WAKEUP) {
++			struct trace_sched_wakeup *t = trace[i].event_data;
++			if (!rt_tid(t->pid))
++				continue;
++			if (events[event_idx].event_type !=
++			    TRACE_RECORD_SCHED_WAKEUP ||
++			    events[event_idx].event_data !=
++			    t->pid) {
++				printf("Test case failed, expecting event "
++				       "index %d type %d for tid %d, "
++				       "got sched wakeup to tid %d\n",
++				       event_idx,
++				       events[event_idx].event_type,
++				       events[event_idx].event_data,
++				       t->pid);
++				return -1;
++			}
++			event_idx++;
++		}
++
++		if (event_idx == events_size)
++			break;
++	}
++
++	if (event_idx != events_size) {
++		printf("Test case failed, "
++		       "did not complete all expected events.\n");
++		printf("Next expected event: event type %d for tid %d\n",
++		       events[event_idx].event_type,
++		       events[event_idx].event_data);
++		return -1;
++	}
++
++	return 0;
++}
++
++static void create_rt_thread(int prio, void *fn, pthread_t *rt_thread)
++{
++	pthread_attr_t rt_thread_attrs;
++	struct sched_param rt_thread_sched_params;
++
++	ERROR_CHECK(pthread_attr_init(&rt_thread_attrs));
++	ERROR_CHECK(pthread_attr_setinheritsched(&rt_thread_attrs,
++						 PTHREAD_EXPLICIT_SCHED));
++	ERROR_CHECK(pthread_attr_setschedpolicy(&rt_thread_attrs,
++						SCHED_FIFO));
++	rt_thread_sched_params.sched_priority = prio;
++	ERROR_CHECK(pthread_attr_setschedparam(&rt_thread_attrs,
++					       &rt_thread_sched_params));
++
++	SAFE_PTHREAD_CREATE(rt_thread, &rt_thread_attrs, fn, NULL);
++}
++
++static void run(void)
++{
++	pthread_t rt_low_a, rt_low_b;
++	pthread_t rt_med_a, rt_med_b;
++	pthread_t rt_high_a, rt_high_b;
++
++	sem_init(&sem_high_b, 0, 0);
++	sem_init(&sem_high_a, 0, 0);
++	sem_init(&sem_med_b, 0, 0);
++	sem_init(&sem_med_a, 0, 0);
++	sem_init(&sem_low_b, 0, 0);
++	sem_init(&sem_low_a, 0, 0);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	create_rt_thread(70, rt_low_fn_a, &rt_low_a);
++	create_rt_thread(70, rt_low_fn_b, &rt_low_b);
++	create_rt_thread(75, rt_med_fn_a, &rt_med_a);
++	create_rt_thread(75, rt_med_fn_b, &rt_med_b);
++	create_rt_thread(80, rt_high_fn_a, &rt_high_a);
++	create_rt_thread(80, rt_high_fn_b, &rt_high_b);
++
++	SAFE_PTHREAD_JOIN(rt_low_a, NULL);
++	SAFE_PTHREAD_JOIN(rt_low_b, NULL);
++	SAFE_PTHREAD_JOIN(rt_med_a, NULL);
++	SAFE_PTHREAD_JOIN(rt_med_b, NULL);
++	SAFE_PTHREAD_JOIN(rt_high_a, NULL);
++	SAFE_PTHREAD_JOIN(rt_high_b, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "RT FIFO tasks did not execute in the expected "
++			"pattern.\n");
++	else
++		tst_res(TPASS, "RT FIFO tasks executed in the expected "
++			"pattern.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sched_prio_3_rr.c b/testcases/kernel/sched/eas/sched_prio_3_rr.c
+new file mode 100644
+index 000000000..8403da5fe
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sched_prio_3_rr.c
+@@ -0,0 +1,179 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * Three RT RR tasks are created and affined to the same CPU. They execute as
++ * CPU hogs. Their runtime is checked to see that they share the CPU as
++ * expected.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <semaphore.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_wakeup sched_switch sched_process_exit"
++
++#define EXEC_MIN_PCT 33
++#define EXEC_MAX_PCT 34
++
++static sem_t sem;
++
++static int rt_a_tid;
++static int rt_b_tid;
++static int rt_c_tid;
++
++#define BUSY_WAIT_USECS 10000000
++static void *rt_b_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_b_tid = gettid();
++	affine(0);
++	sem_wait(&sem);
++	burn(BUSY_WAIT_USECS, 0);
++	return NULL;
++}
++
++static void *rt_c_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_c_tid = gettid();
++	affine(0);
++	sem_wait(&sem);
++	burn(BUSY_WAIT_USECS, 0);
++	return NULL;
++}
++
++static void *rt_a_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	rt_a_tid = gettid();
++	affine(0);
++	/* Give all other tasks a chance to affine and block. */
++	usleep(3000);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "TEST START");
++	sem_post(&sem);
++	sem_post(&sem);
++	burn(BUSY_WAIT_USECS, 0);
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i, pct, rv;
++	int test_start = 0;
++	unsigned long long exec_start_us = 0;
++	unsigned long a_exec_us = 0;
++	unsigned long b_exec_us = 0;
++	unsigned long c_exec_us = 0;
++	unsigned long total;
++
++	for (i = 0; i < num_trace_records; i++) {
++		struct trace_sched_switch *t = trace[i].event_data;
++		unsigned long long segment_us;
++
++		if (trace[i].event_type == TRACE_RECORD_TRACING_MARK_WRITE &&
++		    !strcmp(trace[i].event_data, "TEST START")) {
++			/* We need to include this segment in A's exec time. */
++			exec_start_us = TS_TO_USEC(trace[i].ts);
++			test_start = 1;
++		}
++
++		if (!test_start)
++			continue;
++
++		if (trace[i].event_type != TRACE_RECORD_SCHED_SWITCH)
++			continue;
++
++		segment_us = TS_TO_USEC(trace[i].ts) - exec_start_us;
++		if (t->prev_pid == rt_a_tid)
++			a_exec_us += segment_us;
++		else if (t->prev_pid == rt_b_tid)
++			b_exec_us += segment_us;
++		else if (t->prev_pid == rt_c_tid)
++			c_exec_us += segment_us;
++		if (t->next_pid == rt_a_tid ||
++		    t->next_pid == rt_b_tid ||
++		    t->next_pid == rt_c_tid)
++			exec_start_us = TS_TO_USEC(trace[i].ts);
++	}
++
++	rv = 0;
++	total = a_exec_us + b_exec_us + c_exec_us;
++	pct = (a_exec_us * 100) / total;
++	rv |= (pct < EXEC_MIN_PCT || pct > EXEC_MAX_PCT);
++	printf("a exec time: %ld usec (%d%%)\n", a_exec_us, pct);
++	pct = (b_exec_us * 100) / total;
++	rv |= (pct < EXEC_MIN_PCT || pct > EXEC_MAX_PCT);
++	printf("b exec time: %ld usec (%d%%)\n", b_exec_us, pct);
++	pct = (c_exec_us * 100) / total;
++	rv |= (pct < EXEC_MIN_PCT || pct > EXEC_MAX_PCT);
++	printf("c exec time: %ld usec (%d%%)\n", c_exec_us, pct);
++
++	return rv;
++}
++
++static void create_rt_thread(int prio, void *fn, pthread_t *rt_thread)
++{
++	pthread_attr_t rt_thread_attrs;
++	struct sched_param rt_thread_sched_params;
++
++	ERROR_CHECK(pthread_attr_init(&rt_thread_attrs));
++	ERROR_CHECK(pthread_attr_setinheritsched(&rt_thread_attrs,
++						 PTHREAD_EXPLICIT_SCHED));
++	ERROR_CHECK(pthread_attr_setschedpolicy(&rt_thread_attrs,
++						SCHED_RR));
++	rt_thread_sched_params.sched_priority = prio;
++	ERROR_CHECK(pthread_attr_setschedparam(&rt_thread_attrs,
++					       &rt_thread_sched_params));
++
++	SAFE_PTHREAD_CREATE(rt_thread, &rt_thread_attrs, fn, NULL);
++}
++
++#define NUM_TASKS 3
++static void run(void)
++{
++	pthread_t rt_a, rt_b, rt_c;
++
++	sem_init(&sem, 0, 0);
++
++	printf("Running %d RT RR tasks for 10 seconds...\n", NUM_TASKS);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	create_rt_thread(70, rt_a_fn, &rt_a);
++	create_rt_thread(70, rt_b_fn, &rt_b);
++	create_rt_thread(70, rt_c_fn, &rt_c);
++
++	SAFE_PTHREAD_JOIN(rt_a, NULL);
++	SAFE_PTHREAD_JOIN(rt_b, NULL);
++	SAFE_PTHREAD_JOIN(rt_c, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "RT RR tasks did not receive the expected CPU "
++			"time (all between %d-%d %% CPU).\n", EXEC_MIN_PCT,
++			EXEC_MAX_PCT);
++	else
++		tst_res(TPASS, "RT RR tasks received the expected CPU time.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sugov_latency.c b/testcases/kernel/sched/eas/sugov_latency.c
+new file mode 100644
+index 000000000..923948edc
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sugov_latency.c
+@@ -0,0 +1,230 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * A CFS task is affined to a particular CPU. The task runs as a CPU hog for a
++ * while then as a very small task for a while. The latency for the CPU
++ * frequency of the CPU to reach max and then min is verified.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sched_process_exit sched_process_fork cpu_frequency"
++
++#define MAX_FREQ_INCREASE_LATENCY_US 70000
++#define MAX_FREQ_DECREASE_LATENCY_US 70000
++
++static int test_cpu;
++
++#define BURN_MSEC 500
++static void *burn_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	int i = 0;
++	unsigned int scaling_min_freq, scaling_cur_freq;
++	char scaling_freq_file[60];
++
++	affine(test_cpu);
++
++	/*
++	 * wait a bit to allow any hacks to boost frequency on migration
++	 * to take effect
++	 */
++	usleep(200);
++
++	sprintf(scaling_freq_file,
++		"/sys/devices/system/cpu/cpu%d/cpufreq/scaling_min_freq",
++		test_cpu);
++	SAFE_FILE_SCANF(scaling_freq_file, "%d", &scaling_min_freq);
++
++	sprintf(scaling_freq_file,
++		"/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq",
++		test_cpu);
++
++	/* wait for test_cpu to reach scaling_min_freq */
++	while(i++ < 10) {
++		usleep(100 * 1000);
++		SAFE_FILE_SCANF(scaling_freq_file, "%d",
++				&scaling_cur_freq);
++		if (scaling_cur_freq == scaling_min_freq)
++			break;
++	}
++	if (i >= 10) {
++		printf("Unable to reach scaling_min_freq before test!\n");
++		return NULL;
++	}
++
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "affined");
++	burn(BURN_MSEC * 1000, 0);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "small task");
++	burn(BURN_MSEC * 1000, 1);
++
++	return NULL;
++}
++
++static int parse_results(void)
++{
++	int i;
++
++	int start_idx;
++	int sleep_idx;
++	unsigned int max_freq_seen = 0;
++	int max_freq_seen_idx;
++	unsigned int min_freq_seen = UINT_MAX;
++	int min_freq_seen_idx;
++
++	char scaling_freq_file[60];
++	unsigned int scaling_max_freq;
++	unsigned int scaling_min_freq;
++
++	unsigned int increase_latency_usec;
++	unsigned int decrease_latency_usec;
++
++	/* find starting timestamp of test */
++	for (i = 0; i < num_trace_records; i++)
++		if (trace[i].event_type == TRACE_RECORD_TRACING_MARK_WRITE &&
++		    !strcmp(trace[i].event_data, "affined"))
++			break;
++	if (i == num_trace_records) {
++		printf("Did not find start of burn thread in trace!\n");
++		return -1;
++	}
++	start_idx = i;
++
++	/* find timestamp when burn thread sleeps */
++	for (; i < num_trace_records; i++)
++		if (trace[i].event_type == TRACE_RECORD_TRACING_MARK_WRITE &&
++		    !strcmp(trace[i].event_data, "small task"))
++				break;
++	if (i == num_trace_records) {
++		printf("Did not find switch to small task of burn thread in "
++		       "trace!\n");
++		return -1;
++	}
++	sleep_idx = i;
++
++	/* find highest CPU frequency bewteen start and sleep timestamp */
++	for (i = start_idx; i < sleep_idx; i++)
++		if (trace[i].event_type == TRACE_RECORD_CPU_FREQUENCY) {
++			struct trace_cpu_frequency *t = trace[i].event_data;
++			if (t->cpu == test_cpu && t->state > max_freq_seen) {
++				max_freq_seen = t->state;
++				max_freq_seen_idx = i;
++			}
++		}
++	if (max_freq_seen == 0) {
++		printf("No freq events between start and sleep!\n");
++		return -1;
++	}
++
++	/* find lowest CPU frequency between sleep timestamp and end */
++	for (; i < num_trace_records; i++)
++		if (trace[i].event_type == TRACE_RECORD_CPU_FREQUENCY) {
++			struct trace_cpu_frequency *t = trace[i].event_data;
++			if (t->cpu == test_cpu && t->state < min_freq_seen) {
++				min_freq_seen = t->state;
++				min_freq_seen_idx = i;
++			}
++		}
++	if (min_freq_seen == UINT_MAX) {
++		printf("No freq events between sleep and end!\n");
++		return -1;
++	}
++
++	/* is highest CPU freq equal or greater than highest reported in
++	 * scaling_max_freq? */
++	sprintf(scaling_freq_file,
++		"/sys/devices/system/cpu/cpu%d/cpufreq/scaling_max_freq",
++		test_cpu);
++	SAFE_FILE_SCANF(scaling_freq_file, "%d", &scaling_max_freq);
++	if (max_freq_seen < scaling_max_freq) {
++		printf("CPU%d did not reach scaling_max_freq!\n",
++		       test_cpu);
++		return -1;
++	} else {
++		printf("CPU%d reached %d MHz during test "
++		       "(scaling_max_freq %d MHz).\n", test_cpu,
++		       max_freq_seen / 1000, scaling_max_freq / 1000);
++	}
++
++	/* is lowest CPU freq equal or less than scaling_min_freq? */
++	sprintf(scaling_freq_file,
++		"/sys/devices/system/cpu/cpu%d/cpufreq/scaling_min_freq",
++		test_cpu);
++	SAFE_FILE_SCANF(scaling_freq_file, "%d", &scaling_min_freq);
++	if (min_freq_seen > scaling_min_freq) {
++		printf("CPU%d did not reach scaling_min_freq!\n",
++		       test_cpu);
++		return -1;
++	} else {
++		printf("CPU%d reached %d MHz after test "
++		       "(scaling_min_freq %d Mhz).\n",
++		       test_cpu, min_freq_seen / 1000,
++		       scaling_min_freq / 1000);
++	}
++
++	/* calculate and check latencies */
++	increase_latency_usec = trace[max_freq_seen_idx].ts.sec * USEC_PER_SEC +
++		trace[max_freq_seen_idx].ts.usec;
++	increase_latency_usec -= trace[start_idx].ts.sec * USEC_PER_SEC +
++		trace[start_idx].ts.usec;
++
++	decrease_latency_usec = trace[min_freq_seen_idx].ts.sec * USEC_PER_SEC +
++		trace[min_freq_seen_idx].ts.usec;
++	decrease_latency_usec -= trace[sleep_idx].ts.sec * USEC_PER_SEC +
++		trace[sleep_idx].ts.usec;
++
++	printf("Increase latency: %d usec\n", increase_latency_usec);
++	printf("Decrease latency: %d usec\n", decrease_latency_usec);
++
++	return (increase_latency_usec > MAX_FREQ_INCREASE_LATENCY_US ||
++		decrease_latency_usec > MAX_FREQ_DECREASE_LATENCY_US);
++}
++
++static void run(void)
++{
++	pthread_t burn_thread;
++
++	tst_res(TINFO, "Max acceptable latency to fmax: %d usec\n",
++		MAX_FREQ_INCREASE_LATENCY_US);
++	tst_res(TINFO, "Max acceptable latency to fmin: %d usec\n",
++		MAX_FREQ_DECREASE_LATENCY_US);
++
++	test_cpu = tst_ncpus() - 1;
++	printf("CPU hog will be bound to CPU %d.\n", test_cpu);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&burn_thread, NULL, burn_fn, NULL);
++	SAFE_PTHREAD_JOIN(burn_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Governor did not meet latency targets.\n");
++	else
++		tst_res(TPASS, "Governor met latency targets.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sugov_stale_util.c b/testcases/kernel/sched/eas/sugov_stale_util.c
+new file mode 100644
+index 000000000..685d1bd19
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sugov_stale_util.c
+@@ -0,0 +1,235 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * This test attempts to verify that the schedutil governor does not take into
++ * account stale utilization from an idle CPU when calculating the frequency for
++ * a shared policy.
++ *
++ * This test is not yet complete and may never be. The CPU in question may
++ * receive spurious updates which push the stale deadline out, causing the test
++ * to fail.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <time.h>
++#include <semaphore.h>
++#include <stdlib.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++#include "util.h"
++
++#define TRACE_EVENTS "sugov_next_freq sugov_util_update"
++
++#define MAX_TEST_CPUS 32
++static int policy_cpus[MAX_TEST_CPUS];
++static int policy_num_cpus = 0;
++
++static int test_cpu;
++static sem_t sem;
++
++/* sugov currently waits 1.125 * TICK_NSEC, which with HZ=300, is
++ * ~3.75ms for PELT
++ * On WALT, 1.125 * sched_ravg_window (20ms) is 22.5ms */
++#define MAX_STALE_USEC 22500
++/* The event task may not wake up right away due to timer slack. */
++#define SLACK_USEC 10000
++
++static void *event_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	/*
++	 * FIXME: Proper logic to identify a multi-CPU policy and select two
++	 * CPUS from it is required here.
++	 */
++	affine(test_cpu - 1);
++
++	sem_wait(&sem);
++
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker",
++			 "event task sleep");
++	usleep(MAX_STALE_USEC);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker",
++			 "event task wake");
++	/*
++	 * Waking up should be sufficient to get the cpufreq policy to
++	 * re-evaluate.
++	 */
++	return NULL;
++}
++
++#define BURN_MSEC 500
++static void *burn_fn(void *arg LTP_ATTRIBUTE_UNUSED)
++{
++	affine(test_cpu);
++
++	/*
++	 * wait a bit to allow any hacks to boost frequency on migration
++	 * to take effect
++	 */
++	usleep(200);
++
++	/* Busy loop for BURN_MSEC to get the task demand to maximum. */
++	burn(BURN_MSEC * 1000, 0);
++
++	/*
++	 * Sleep. The next sugov update after TICK_NSEC should not include
++	 * this task's contribution.
++	 */
++	SAFE_FILE_PRINTF(TRACING_DIR "trace_marker", "sleeping");
++
++	/*
++	 * Wake up task on another CPU in the same policy which will sleep
++	 * for stale_ns, then wake up briefly to trigger a recalculation of the
++	 * cpufreq policy.
++	 */
++	sem_post(&sem);
++	sleep(2);
++
++	return NULL;
++}
++
++static int cpu_in_policy(int cpu)
++{
++	int i;
++	for (i = 0; i < policy_num_cpus; i++)
++		if (cpu == policy_cpus[i])
++			return 1;
++	return 0;
++}
++
++static int parse_results(void)
++{
++	int i, sleep_idx;
++	int max_util_seen = 0;
++	unsigned int stale_usec;
++
++	/* Verify that utilization reached 1024 before sleep. */
++	for (i = 0; i < num_trace_records; i++) {
++		if (trace[i].event_type == TRACE_RECORD_SUGOV_UTIL_UPDATE) {
++			struct trace_sugov_util_update *t =
++				trace[i].event_data;
++			if (t->cpu == test_cpu && t->util > max_util_seen)
++				max_util_seen = t->util;
++		}
++		if (trace[i].event_type == TRACE_RECORD_TRACING_MARK_WRITE &&
++		    !strcmp(trace[i].event_data, "sleeping"))
++			break;
++	}
++	printf("Max util seen from CPU hog: %d\n", max_util_seen);
++	if (max_util_seen < 1000) {
++		printf("Trace parse error, utilization of CPU hog did "
++		       "not reach 1000.\n");
++		return -1;
++	}
++	sleep_idx = i;
++//	print_trace_record(&trace[i]);
++	for (; i < num_trace_records; i++)
++		if (trace[i].event_type == TRACE_RECORD_SUGOV_NEXT_FREQ) {
++			struct trace_sugov_next_freq *t =
++				trace[i].event_data;
++			/* We should only see some minor utilization. */
++			if (cpu_in_policy(t->cpu) && t->util < 200)
++				break;
++		}
++	if (i == num_trace_records) {
++		printf("Trace parse error, util never went stale!\n");
++		return -1;
++	}
++//	print_trace_record(&trace[i]);
++	stale_usec = TS_TO_USEC(trace[i].ts) - TS_TO_USEC(trace[sleep_idx].ts);
++
++	printf("Stale vote shown to be cleared in %d usec.\n", stale_usec);
++	return (stale_usec > (MAX_STALE_USEC + SLACK_USEC));
++}
++
++#define POLICY_CPUS_BUFSIZE 1024
++static void get_policy_cpus(void)
++{
++	int i=0, len, policy_cpus_fd;
++	char policy_cpus_fname[128];;
++	char *buf;
++
++	sprintf(policy_cpus_fname,
++		"/sys/devices/system/cpu/cpu%d/cpufreq/related_cpus",
++		test_cpu);
++	buf = SAFE_MALLOC(POLICY_CPUS_BUFSIZE);
++
++	policy_cpus_fd = open(policy_cpus_fname, O_RDONLY);
++	if (policy_cpus_fd < 0) {
++		printf("Failed to open policy cpus (errno %d)\n",
++		       errno);
++		return;
++	}
++
++	len = read(policy_cpus_fd, buf, POLICY_CPUS_BUFSIZE -1);
++	/* At least one digit is expected. */
++	if (len < 2) {
++		printf("Read of policy cpus returned %d (errno %d)\n",
++		       len, errno);
++		return;
++	}
++	close(policy_cpus_fd);
++	/* buf now has a list of CPUs, parse it */
++	while(buf[i] >= '0' && buf[i] <= '9') {
++		int j = i;
++		while (buf[j] >= '0' && buf[j] <= '9')
++			j++;
++		buf[j] = 0;
++		policy_cpus[policy_num_cpus++] = atoi(&buf[i]);
++		i = j + 1;
++	}
++	printf("Testing on CPU %d, all CPUs in that policy:\n",
++	       test_cpu);
++	for (int i = 0; i < policy_num_cpus; i++)
++		printf(" %d", policy_cpus[i]);
++	printf("\n");
++	free(buf);
++}
++
++static void run(void)
++{
++	pthread_t burn_thread, event_thread;
++
++	test_cpu = tst_ncpus() - 1;
++	printf("CPU hog will be bound to CPU %d.\n", test_cpu);
++	get_policy_cpus();
++
++	sem_init(&sem, 0, 0);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	SAFE_PTHREAD_CREATE(&burn_thread, NULL, burn_fn, NULL);
++	SAFE_PTHREAD_CREATE(&event_thread, NULL, event_fn, NULL);
++
++	SAFE_PTHREAD_JOIN(burn_thread, NULL);
++	SAFE_PTHREAD_JOIN(event_thread, NULL);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	if (parse_results())
++		tst_res(TFAIL, "Stale utilization not cleared within expected "
++			"time (%d usec).\n", MAX_STALE_USEC + SLACK_USEC);
++	else
++		tst_res(TPASS, "Stale utilization cleared within expected "
++			"time.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/sugov_wakeups.c b/testcases/kernel/sched/eas/sugov_wakeups.c
+new file mode 100644
+index 000000000..c1f6f2f08
+--- /dev/null
++++ b/testcases/kernel/sched/eas/sugov_wakeups.c
+@@ -0,0 +1,68 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * This test looks for a high number of wakeups from the schedutil governor
++ * threads.
++ */
++
++#define _GNU_SOURCE
++#include <errno.h>
++#include <pthread.h>
++#include <sched.h>
++#include <stdio.h>
++#include <time.h>
++
++#include "tst_test.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_pthread.h"
++
++#include "trace_parse.h"
++
++#define TRACE_EVENTS "sched_switch"
++
++#define MAX_WAKEUPS 100
++
++#define SLEEP_SEC 10
++static void run(void)
++{
++	int i;
++	int num_sugov_wakeups = 0;
++
++	tst_res(TINFO, "Observing sugov wakeups over %d sec, "
++		"%d wakeups allowed\n", SLEEP_SEC, MAX_WAKEUPS);
++
++	/* configure and enable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	SAFE_FILE_PRINTF(TRACING_DIR "buffer_size_kb", "16384");
++	SAFE_FILE_PRINTF(TRACING_DIR "set_event", TRACE_EVENTS);
++	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
++
++	sleep(SLEEP_SEC);
++
++	/* disable tracing */
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++	LOAD_TRACE();
++
++	for (i = 0; i < num_trace_records; i++) {
++		if (trace[i].event_type == TRACE_RECORD_SCHED_SWITCH) {
++			struct trace_sched_switch *t = trace[i].event_data;
++			if (!strncmp("sugov:", t->next_comm, 6))
++				num_sugov_wakeups++;
++		}
++	}
++	printf("%d sugov wakeups occurred.\n", num_sugov_wakeups);
++	if (num_sugov_wakeups > MAX_WAKEUPS)
++		tst_res(TFAIL, "Too many wakeups from the schedutil "
++			"governor.\n");
++	else
++		tst_res(TPASS, "Wakeups from schedutil governor were below "
++			"threshold.\n");
++}
++
++static struct tst_test test = {
++	.test_all = run,
++	.cleanup = trace_cleanup,
++};
+diff --git a/testcases/kernel/sched/eas/trace_parse.c b/testcases/kernel/sched/eas/trace_parse.c
+new file mode 100644
+index 000000000..a4c158a1b
+--- /dev/null
++++ b/testcases/kernel/sched/eas/trace_parse.c
+@@ -0,0 +1,529 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#define _GNU_SOURCE
++#include <fcntl.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <unistd.h>
++#include <errno.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++
++#include "tst_res_flags.h"
++#include "tst_safe_file_ops.h"
++#include "tst_safe_macros.h"
++
++#include "trace_parse.h"
++
++int num_trace_records = 0;
++struct trace_record *trace = NULL;
++
++static int trace_fd = -1;
++static char *trace_buffer = NULL;
++
++static int parse_event_type(char *event_name)
++{
++	if (!strcmp(event_name, "sched_process_exit"))
++		return TRACE_RECORD_SCHED_PROCESS_EXIT;
++	if (!strcmp(event_name, "sched_process_fork"))
++		return TRACE_RECORD_SCHED_PROCESS_FORK;
++	if (!strcmp(event_name, "sched_switch"))
++		return TRACE_RECORD_SCHED_SWITCH;
++	if (!strcmp(event_name, "sched_wakeup"))
++		return TRACE_RECORD_SCHED_WAKEUP;
++	if (!strcmp(event_name, "sugov_util_update"))
++		return TRACE_RECORD_SUGOV_UTIL_UPDATE;
++	if (!strcmp(event_name, "sugov_next_freq"))
++		return TRACE_RECORD_SUGOV_NEXT_FREQ;
++	if (!strcmp(event_name, "cpu_frequency"))
++		return TRACE_RECORD_CPU_FREQUENCY;
++	if (!strcmp(event_name, "tracing_mark_write"))
++		return TRACE_RECORD_TRACING_MARK_WRITE;
++	return -1;
++}
++
++void print_trace_record(struct trace_record *tr)
++{
++	printf("task: %s pid %d cpu %d flags %d irq_context %c preempt_depth %d timestamp %d.%.6d event_type %d ",
++	       tr->task, tr->pid, tr->cpu, tr->flags, tr->irq_context,
++	       tr->preempt_depth, tr->ts.sec, tr->ts.usec,
++	       tr->event_type);
++	if (tr->event_type == TRACE_RECORD_SCHED_PROCESS_EXIT)
++		printf("(sched_process_exit)\n");
++	else if (tr->event_type == TRACE_RECORD_SCHED_PROCESS_FORK)
++		printf("(sched_process_fork)\n");
++	else if (tr->event_type == TRACE_RECORD_SCHED_SWITCH) {
++		struct trace_sched_switch *t = tr->event_data;
++		printf("(sched_switch) %s pid=%d prio=%d state=%c => "
++		       "%s pid=%d prio=%d\n", t->prev_comm, t->prev_pid,
++		       t->prev_prio, t->prev_state, t->next_comm, t->next_pid,
++		       t->next_prio);
++	} else if (tr->event_type == TRACE_RECORD_SCHED_WAKEUP) {
++		struct trace_sched_wakeup *t = tr->event_data;
++		printf("(sched_wakeup) %s pid=%d prio=%d cpu=%d\n",
++		       t->comm, t->pid, t->prio, t->cpu);
++	} else if (tr->event_type == TRACE_RECORD_SUGOV_UTIL_UPDATE) {
++		struct trace_sugov_util_update *t = tr->event_data;
++		printf("(sugov_util_update) cpu=%d util=%d avg_cap=%d "
++		       "max_cap=%d\n", t->cpu, t->util, t->avg_cap,
++		       t->max_cap);
++	} else if (tr->event_type == TRACE_RECORD_SUGOV_NEXT_FREQ) {
++		struct trace_sugov_next_freq *t = tr->event_data;
++		printf("(sugov_next_freq) cpu=%d util=%d max=%d freq=%d\n",
++		       t->cpu, t->util, t->max, t->freq);
++	} else if (tr->event_type == TRACE_RECORD_CPU_FREQUENCY) {
++		struct trace_cpu_frequency *t = tr->event_data;
++		printf("(cpu_frequency) state=%d cpu=%d\n",
++		       t->state, t->cpu);
++	} else if (tr->event_type == TRACE_RECORD_TRACING_MARK_WRITE)
++		printf("(tracing_mark_write)\n");
++	else
++		printf("(other)\n");
++}
++
++void trace_cleanup(void)
++{
++	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
++
++}
++
++static void *parse_event_data(unsigned int event_type, char *data)
++{
++	if (event_type == TRACE_RECORD_TRACING_MARK_WRITE) {
++		char *buf = SAFE_MALLOC(strlen(data) + 1);
++		strcpy(buf, data);
++		return buf;
++	}
++	if (event_type == TRACE_RECORD_CPU_FREQUENCY) {
++		struct trace_cpu_frequency *t;
++		t = SAFE_MALLOC(sizeof(struct trace_cpu_frequency));
++		if (sscanf(data, "state=%d cpu_id=%hd", &t->state, &t->cpu)
++		    != 2) {
++			printf("Error parsing cpu_frequency event:\n%s\n",
++			       data);
++			free(t);
++			return NULL;
++		}
++		return t;
++	}
++	if (event_type == TRACE_RECORD_SUGOV_UTIL_UPDATE) {
++		struct trace_sugov_util_update *t;
++		t = SAFE_MALLOC(sizeof(struct trace_sugov_util_update));
++		if (sscanf(data, "cpu=%d util=%d avg_cap=%d max_cap=%d",
++			   &t->cpu, &t->util, &t->avg_cap, &t->max_cap) != 4) {
++			printf("Error parsing sugov_util_update event:\n%s\n",
++			       data);
++			free(t);
++			return NULL;
++		}
++		return t;
++	}
++	if (event_type == TRACE_RECORD_SUGOV_NEXT_FREQ) {
++		struct trace_sugov_next_freq *t;
++		t = SAFE_MALLOC(sizeof(struct trace_sugov_next_freq));
++		if (sscanf(data, "cpu=%d util=%d max=%d freq=%d",
++			   &t->cpu, &t->util, &t->max, &t->freq) != 4) {
++			printf("Error parsing sugov_next_freq event:\n%s\n",
++			       data);
++			free(t);
++			return NULL;
++		}
++		return t;
++	}
++	if (event_type == TRACE_RECORD_SCHED_SWITCH) {
++		struct trace_sched_switch *t;
++		char *tmp, *tmp2;
++		t = SAFE_MALLOC(sizeof(struct trace_sched_switch));
++		/*
++		 * The prev_comm could have spaces in it. Find start of
++		 * "prev_pid=" as that is just after end of prev_comm.
++		 */
++		if (strstr(data, "prev_comm=") != data) {
++			printf("Malformatted sched_switch event:\n%s\n",
++			       data);
++			free(t);
++			return NULL;
++		}
++		tmp = strstr(data, " prev_pid=");
++		if (!tmp) {
++			printf("Malformatted sched_switch event, "
++			       "no prev_pid:\n%s\n", data);
++			free(t);
++			return NULL;
++		}
++		*tmp = 0;
++		snprintf(t->prev_comm, sizeof(t->prev_comm), "%s", data + 10);
++		*tmp = ' ';
++		tmp++;
++		if (sscanf(tmp, "prev_pid=%hd prev_prio=%hd "
++			   "prev_state=%c ==>\n",
++			   &t->prev_pid, &t->prev_prio, &t->prev_state) != 3) {
++			printf("Malformatted sched_switch event:\n%s\n",
++			       data);
++			free(t);
++			return NULL;
++		}
++		tmp = strstr(tmp, "==> next_comm=");
++		if (!tmp) {
++			printf("Malformatted sched_switch event:\n%s\n",
++			       data);
++			free(t);
++			return NULL;
++		}
++		tmp += 14;
++		tmp2 = strstr(tmp, " next_pid=");
++		if (!tmp2) {
++			printf("Malformatted sched_switch event:\n%s\n",
++			       data);
++			free(t);
++			return NULL;
++		}
++		*tmp2 = 0;
++		if (strlen(tmp) > 16) {
++			printf("next_comm %s is greater than 16!\n",
++			       tmp);
++			t->next_comm[0] = 0;
++		}
++		snprintf(t->next_comm, sizeof(t->next_comm), "%s", tmp);
++		*tmp2 = ' ';
++		tmp2++;
++		if (sscanf(tmp2, "next_pid=%hd next_prio=%hd", &t->next_pid,
++			   &t->next_prio) != 2) {
++			printf("Malformatted sched_switch event:\n%s\n",
++			       data);
++			free(t);
++			return NULL;
++		}
++		return t;
++	}
++	if (event_type == TRACE_RECORD_SCHED_WAKEUP) {
++		struct trace_sched_wakeup *t;
++		char *tmp;
++		t = SAFE_MALLOC(sizeof(struct trace_sched_wakeup));
++		tmp = strstr(data, " pid=");
++		if (!tmp) {
++			printf("Malformatted sched_wakeup event:\n%s\n", data);
++			free(t);
++			return NULL;
++		}
++		*tmp = 0;
++		snprintf(t->comm, sizeof(t->comm), "%s", data + 5);
++		*tmp = ' ';
++		if (sscanf(tmp, " pid=%hd prio=%hd target_cpu=%hd", &t->pid,
++			   &t->prio, &t->cpu) != 3) {
++			printf("Malformatted sched_wakeup event:\n%s\n", data);
++			free(t);
++			return NULL;
++		}
++		return t;
++	}
++	return NULL;
++}
++
++/*
++ * Given a line of text from a trace containing a trace record, parse the trace
++ * record into a struct trace_record.
++ * First 16 chars are the currently running thread name. Drop leading spaces.
++ * Next char is a dash
++ * Next 5 chars are PID. Drop trailing spaces.
++ * Next char is a space.
++ * Next five chars are the CPU, i.e. [001].
++ * Next char is a space.
++ * Next letter is whether IRQs are off.
++ * Next letter is if NEED_RESCHED is set.
++ * Next letter is if this is in hard or soft IRQ context.
++ * Next letter is the preempt disable depth.
++ * Next char is a space.
++ * Next twelve letters are the timestamp. Drop leading spaces.
++ * Next char is colon.
++ * Next char is space.
++ * Next twelve letters are the event name.
++ * Next char is colon.
++ * Rest of line is string specific to event.
++ */
++static int parse_trace_record(struct trace_record *tr, char *line) {
++	unsigned int idx = 0;
++	char *found;
++
++	/* Skip leading spaces in the task name. */
++	while (idx < 16 && line[idx] == ' ')
++		idx++;
++	if (idx == 16) {
++		printf("Malformatted trace record, no task name:\n");
++		printf("%s", line);
++		return -1;
++	}
++	memcpy(tr->task, &line[idx], 16-idx);
++	if (line[16] != '-') {
++		printf("Malformatted trace record, no dash after task "
++		       "name:\n");
++		printf("%s", line);
++		return -1;
++	}
++	idx = 17;
++	if (line[22] != ' ') {
++		printf("Malformatted trace record, no space between"
++		       "pid and CPU:\n");
++		printf("%s", line);
++		return -1;
++	}
++	line[22] = 0;
++	if (sscanf(&line[17], "%hd", &tr->pid) != 1) {
++		printf("Malformatted trace record, error parsing"
++		       "pid:\n");
++		printf("%s", line);
++		return -1;
++	}
++	if (line[28] != ' ') {
++		printf("Malformatted trace record, no space between"
++		       "CPU and flags:\n");
++		printf("%s", line);
++		return -1;
++	}
++	line[28] = 0;
++	if (sscanf(&line[23], "[%hd]", &tr->cpu) != 1) {
++		printf("Malformatted trace record, error parsing CPU:\n");
++		printf("%s", line);
++		return -1;
++	}
++	if (line[29] == 'd') {
++		tr->flags |= TRACE_RECORD_IRQS_OFF;
++	} else if (line[29] != '.') {
++		printf("Malformatted trace record, error parsing irqs-off:\n");
++		printf("%s", line);
++		return -1;
++	}
++	if (line[30] == 'N') {
++		tr->flags |= TRACE_RECORD_TIF_NEED_RESCHED;
++		tr->flags |= TRACE_RECORD_PREEMPT_NEED_RESCHED;
++	} else if (line[30] == 'n') {
++		tr->flags |= TRACE_RECORD_TIF_NEED_RESCHED;
++	} else if (line[30] == 'p') {
++		tr->flags |= TRACE_RECORD_PREEMPT_NEED_RESCHED;
++	} else if (line[30] != '.') {
++		printf("Malformatted trace record, error parsing "
++		       "need-resched:\n");
++		printf("%s", line);
++		return -1;
++	}
++
++	if (line[31] != IRQ_CONTEXT_NORMAL && line[31] != IRQ_CONTEXT_SOFT &&
++	    line[31] != IRQ_CONTEXT_HARD &&
++	    line[31] != IRQ_CONTEXT_HARD_IN_SOFT &&
++	    line[31] != IRQ_CONTEXT_NMI && line[31] != IRQ_CONTEXT_NMI_IN_HARD) {
++		printf("Malformatted trace record, error parsing irq "
++		       "context:\n");
++		printf("%s", line);
++		return -1;
++	}
++	tr->irq_context = line[31];
++
++	if (line[33] != ' ') {
++		printf("Malformatted trace record, no space between"
++		       "flags and timestamp:\n");
++		printf("%s", line);
++		return -1;
++	}
++	line[33] = 0;
++	if (line[32] == '.') {
++		tr->preempt_depth = 0;
++	} else if (sscanf(&line[32], "%hx", &tr->preempt_depth) != 1) {
++		printf("Malformatted trace record, error parsing "
++		       "preempt-depth:\n");
++		printf("%s", line);
++		return -1;
++	}
++
++	/* timestamp starts as early as line[34], skip leading spaces */
++	idx = 34;
++	while (idx < 38 && line[idx] == ' ')
++		idx++;
++	if (sscanf(&line[idx], "%d.%d: ", &tr->ts.sec,
++		   &tr->ts.usec) != 2) {
++		printf("Malformatted trace record, error parsing "
++		       "timestamp:\n");
++		printf("%s", line);
++		return -1;
++	}
++	/* we know a space appears in the string because sscanf parsed it */
++	found = strchr(&line[idx], ' ');
++	idx = (found - line + 1);
++	found = strchr(&line[idx], ':');
++	if (!found) {
++		printf("Malformatted trace record, error parsing "
++		       "event name:\n");
++		printf("%s", line);
++		return -1;
++	}
++	*found = 0;
++	tr->event_type = parse_event_type(&line[idx]);
++
++	/*
++	 * there is a space between the ':' after the event name and the event
++	 * data
++	 */
++	if (tr->event_type > 0)
++		tr->event_data = parse_event_data(tr->event_type, found + 2);
++
++	return 0;
++}
++
++#define TRACE_BUFFER_SIZE 8192
++static int refill_buffer(char *buffer, char *idx)
++{
++	int bytes_in_buffer;
++	int bytes_to_read;
++	int bytes_read = 0;
++	int rv;
++
++	bytes_in_buffer = TRACE_BUFFER_SIZE - (idx - buffer) - 1;
++	bytes_to_read = TRACE_BUFFER_SIZE - bytes_in_buffer - 1;
++
++	if (trace_fd == -1) {
++		trace_fd = open(TRACING_DIR "trace", O_RDONLY);
++		if (trace_fd == -1) {
++			printf("Could not open trace file!\n");
++			return 0;
++		}
++	}
++
++	/* Shift existing bytes in buffer to front. */
++	memmove(buffer, idx, bytes_in_buffer);
++	idx = buffer + bytes_in_buffer;
++
++	while(bytes_to_read) {
++		rv = read(trace_fd, idx, bytes_to_read);
++		if (rv == -1) {
++			printf("Could not read trace file! (%d)\n", errno);
++			return -1;
++		}
++		if (rv == 0)
++			break;
++		idx += rv;
++		bytes_read += rv;
++		bytes_to_read -= rv;
++	}
++
++	return bytes_read;
++}
++
++/*
++ * Returns a pointer to a null (not newline) terminated line
++ * of the trace.
++ */
++static char *read_trace_line(void)
++{
++	static char *idx;
++	char *line, *newline;
++	int rv;
++
++	if (!trace_buffer) {
++		trace_buffer = SAFE_MALLOC(TRACE_BUFFER_SIZE);
++		idx = trace_buffer + TRACE_BUFFER_SIZE - 1;
++		*idx = 0;
++	}
++
++	line = idx;
++	newline = strchr(idx, '\n');
++	if (!newline) {
++		rv = refill_buffer(trace_buffer, idx);
++		if (rv == -1 || rv == 0)
++				return NULL;
++		idx = trace_buffer;
++		line = idx;
++		newline = strchr(idx, '\n');
++	}
++	if (newline) {
++		*newline = 0;
++		idx = newline + 1;
++		return line;
++	}
++	return NULL;
++}
++
++struct trace_record *load_trace(void)
++{
++	int buflines, unused;
++	int tmp_num_trace_records = 0;
++	char *line;
++	enum parse_state_type {
++		PARSE_STATE_SEEK_NUM_ENTRIES = 0,
++		PARSE_STATE_REMAINING_COMMENTS,
++		PARSE_STATE_TRACE_ENTRIES,
++	};
++	int parse_state = PARSE_STATE_SEEK_NUM_ENTRIES;
++
++	num_trace_records = 0;
++
++#ifdef PRINT_PARSING_UPDATES
++	printf("\n");
++#endif
++	while((line = read_trace_line())) {
++		if (line[0] == '#') {
++			if (parse_state == PARSE_STATE_TRACE_ENTRIES) {
++				printf("Malformatted trace output, comment"
++				       "after start of trace entries.\n");
++				if (trace)
++					free(trace);
++				return NULL;
++			}
++			if (parse_state == PARSE_STATE_REMAINING_COMMENTS)
++				continue;
++			if (sscanf(line,
++				   "# entries-in-buffer/entries-written: "
++				   "%d/%d",
++				   &buflines, &unused) != 2) {
++				continue;
++			}
++
++			trace = SAFE_MALLOC(sizeof(struct trace_record) *
++					    buflines);
++			parse_state = PARSE_STATE_REMAINING_COMMENTS;
++		} else {
++			if (parse_state == PARSE_STATE_SEEK_NUM_ENTRIES) {
++				printf("Malformatted trace output, non-comment "
++				       "before number of entries.\n");
++				if (trace)
++					free(trace);
++				return NULL;
++			}
++
++			if (parse_state == PARSE_STATE_REMAINING_COMMENTS)
++				parse_state = PARSE_STATE_TRACE_ENTRIES;
++
++			if (parse_trace_record(&trace[tmp_num_trace_records++],
++					       line)) {
++				printf("Malformatted trace record entry:\n");
++				printf("%s\n", line);
++				if (trace)
++					free(trace);
++				return NULL;
++			}
++#ifdef PRINT_PARSING_UPDATES
++			if (tmp_num_trace_records%1000 == 0) {
++				printf("\r%d/%d records processed",
++				       tmp_num_trace_records, buflines);
++				fflush(stdout);
++			}
++#endif
++		}
++	}
++#ifdef PRINT_PARSING_UPDATES
++	printf("\n");
++#endif
++	num_trace_records = tmp_num_trace_records;
++	if (trace_fd >= 0) {
++		close(trace_fd);
++		trace_fd = -1;
++	}
++	if (trace_buffer) {
++		free(trace_buffer);
++		trace_buffer = NULL;
++	}
++	return trace;
++}
+diff --git a/testcases/kernel/sched/eas/trace_parse.h b/testcases/kernel/sched/eas/trace_parse.h
+new file mode 100644
+index 000000000..436b6d7d8
+--- /dev/null
++++ b/testcases/kernel/sched/eas/trace_parse.h
+@@ -0,0 +1,103 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#ifndef _LTP_TRACE_PARSE_H_
++#define _LTP_TRACE_PARSE_H_
++
++/*
++ * It is necessary to define TRACE_EVENTS to communicate the events to trace. */
++#define TRACING_DIR "/sys/kernel/debug/tracing/"
++
++enum {
++	TRACE_RECORD_OTHER = 0,
++	TRACE_RECORD_SCHED_PROCESS_EXIT,
++	TRACE_RECORD_SCHED_PROCESS_FORK,
++	TRACE_RECORD_SCHED_SWITCH,
++	TRACE_RECORD_SCHED_WAKEUP,
++	TRACE_RECORD_SUGOV_UTIL_UPDATE,
++	TRACE_RECORD_SUGOV_NEXT_FREQ,
++	TRACE_RECORD_CPU_FREQUENCY,
++	TRACE_RECORD_TRACING_MARK_WRITE,
++};
++
++#define IRQ_CONTEXT_NORMAL '.'
++#define IRQ_CONTEXT_SOFT 's'
++#define IRQ_CONTEXT_HARD 'h'
++#define IRQ_CONTEXT_HARD_IN_SOFT 'H'
++#define IRQ_CONTEXT_NMI 'z'
++#define IRQ_CONTEXT_NMI_IN_HARD 'Z'
++
++struct timestamp {
++	unsigned int sec;
++	unsigned int usec;
++};
++
++struct trace_cpu_frequency {
++	unsigned int state;
++	unsigned short cpu;
++};
++
++struct trace_sched_switch {
++	char prev_comm[17];
++	unsigned short prev_pid;
++	unsigned short prev_prio;
++	char prev_state;
++	char next_comm[17];
++	unsigned short next_pid;
++	unsigned short next_prio;
++};
++
++struct trace_sched_wakeup {
++	char comm[17];
++	unsigned short pid;
++	unsigned short prio;
++	unsigned short cpu;
++};
++
++struct trace_sugov_util_update {
++	int cpu;
++	int util;
++	int avg_cap;
++	int max_cap;
++};
++
++struct trace_sugov_next_freq {
++	int cpu;
++	int util;
++	int max;
++	int freq;
++};
++
++struct trace_record {
++	char task[17];
++	unsigned short pid;
++	unsigned short cpu;
++
++#define TRACE_RECORD_IRQS_OFF 0x1
++#define TRACE_RECORD_TIF_NEED_RESCHED 0x2
++#define TRACE_RECORD_PREEMPT_NEED_RESCHED 0x4
++	unsigned short flags;
++	unsigned char irq_context;
++	unsigned short preempt_depth;
++
++	struct timestamp ts;
++
++	unsigned int event_type;
++	void *event_data;
++};
++
++extern int num_trace_records;
++extern struct trace_record *trace;
++
++void trace_cleanup(void);
++void print_trace_record(struct trace_record *tr);
++struct trace_record *load_trace(void);
++
++#define LOAD_TRACE() \
++	if (!load_trace()) \
++		tst_brk(TBROK, "Failed to load trace.\n");
++
++#endif /* _LTP_TRACE_PARSE_H_ */
+diff --git a/testcases/kernel/sched/eas/util.c b/testcases/kernel/sched/eas/util.c
+new file mode 100644
+index 000000000..0f0ef13fa
+--- /dev/null
++++ b/testcases/kernel/sched/eas/util.c
+@@ -0,0 +1,159 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#define _GNU_SOURCE
++#include <fcntl.h>
++#include <sched.h>
++#include <string.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <time.h>
++#include <unistd.h>
++
++#include "tst_cpu.h"
++
++#include "util.h"
++
++void affine(int cpu)
++{
++	cpu_set_t cpuset;
++	CPU_ZERO(&cpuset);
++	CPU_SET(cpu, &cpuset);
++	ERROR_CHECK(sched_setaffinity(0, sizeof(cpu_set_t), &cpuset));
++}
++
++/*
++ * Busywait for a certain amount of wallclock time.
++ * If sleep is nonzero, sleep for 1ms between each check.
++ */
++void burn(unsigned int usec, int sleep)
++{
++	unsigned long long now_usec, end_usec;
++	struct timespec ts;
++
++	if (clock_gettime(CLOCK_MONOTONIC, &ts)) {
++		printf("clock_gettime() reported an error\n");
++		return;
++	}
++	end_usec = (ts.tv_sec) * USEC_PER_SEC + (ts.tv_nsec / 1000) + usec;
++	while(1) {
++		if (clock_gettime(CLOCK_MONOTONIC, &ts)) {
++			printf("clock_gettime() reported an error\n");
++			return;
++		}
++		now_usec = ts.tv_sec * USEC_PER_SEC + ts.tv_nsec / 1000;
++		if (now_usec > end_usec)
++			return;
++		if (sleep)
++			usleep(1000);
++	}
++}
++
++/*
++ * get_bigs = 0, search for smallest CPUs
++ * get_bigs = 1, search for CPUs other than the smallest CPUs
++ */
++#define CAP_STATE_FILE_SIZE 1024
++int find_cpus_with_capacity(int get_bigs, cpu_set_t *cpuset)
++{
++	int i, bytes, rv;
++	unsigned int smallest = -1;
++	char cap_states_file[100];
++
++	CPU_ZERO(cpuset);
++
++	for (i = 0; i < tst_ncpus(); i++) {
++		int cap_states_fd;
++		unsigned int cap;
++		char *filebuf, *tmp1, *tmp2;
++
++		sprintf(cap_states_file,
++			"/proc/sys/kernel/sched_domain/cpu%d/domain0/group0/energy/cap_states",
++			i);
++		cap_states_fd = open(cap_states_file, O_RDONLY);
++		if (cap_states_fd == -1) {
++			printf("Could not open cap_states file %s: ",
++			       cap_states_file);
++			perror(NULL);
++			return -1;
++		}
++		bytes = CAP_STATE_FILE_SIZE;
++		filebuf = calloc(1, CAP_STATE_FILE_SIZE + 1);
++		if (!filebuf) {
++			printf("Failed to calloc buffer for cap_states\n");
++			return -1;
++		}
++		tmp1 = filebuf;
++		while (bytes) {
++			rv = read(cap_states_fd, tmp1, bytes);
++			if (rv == -1) {
++				printf("Could not read cap_states\n");
++				return -1;
++			}
++			if (rv == 0)
++				break;
++			tmp1 += rv;
++			bytes -= rv;
++		}
++		if (tmp1 - filebuf == CAP_STATE_FILE_SIZE) {
++			printf("CAP_STATE_FILE_SIZE exhausted, increase\n");
++			return -1;
++		}
++		tmp1 = strrchr(filebuf, '\t');
++		if (!tmp1 || tmp1 == filebuf ) {
++			printf("Malformatted cap_states_file (1).\n%s\n",
++			       filebuf);
++			return -1;
++		}
++		tmp1 = strrchr(tmp1 - 1, '\t');
++		if (!tmp1 || tmp1 == filebuf) {
++			printf("Malformatted cap_states_file (2).\n%s\n",
++			       filebuf);
++			return -1;
++		}
++		tmp1 = strrchr(tmp1 - 1, '\t');
++		if (!tmp1 || tmp1 == filebuf) {
++			printf("Malformatted cap_states_file (3).\n%s\n",
++			       filebuf);
++			return -1;
++		}
++		/* tmp1 now points to tab after the capacity we want. */
++		*tmp1 = 0;
++		tmp2 = strrchr(tmp1 - 1, '\t');
++		if (!tmp2)
++			tmp2 = filebuf;
++		else
++			tmp2++;
++		if (sscanf(tmp2,"%d", &cap) != 1) {
++		       printf("Failed to parse capacity from cap_states.\n");
++		       return -1;
++		}
++		if (close(cap_states_fd)) {
++			printf("Failed to close cap_states file.\n");
++			return -1;
++		}
++
++		if (cap < smallest) {
++			smallest = cap;
++			CPU_ZERO(cpuset);
++			CPU_SET(i, cpuset);
++		} else if (cap == smallest) {
++			CPU_SET(i, cpuset);
++		}
++	}
++
++	if (!get_bigs)
++		return 0;
++
++	for (i = 0; i < tst_ncpus(); i++)
++		if (CPU_ISSET(i, cpuset))
++			CPU_CLR(i, cpuset);
++		else
++			CPU_SET(i, cpuset);
++
++	return 0;
++}
++
+diff --git a/testcases/kernel/sched/eas/util.h b/testcases/kernel/sched/eas/util.h
+new file mode 100644
+index 000000000..2433a53d6
+--- /dev/null
++++ b/testcases/kernel/sched/eas/util.h
+@@ -0,0 +1,32 @@
++/*
++ * Copyright (c) 2018 Google, Inc.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#ifndef _LTP_EAS_UTIL_H_
++#define _LTP_EAS_UTIL_H_
++
++#include <linux/unistd.h>
++#include <sched.h>
++#include <stdio.h>
++
++#define USEC_PER_SEC 1000000
++
++#define TS_TO_USEC(x) (x.usec + x.sec * USEC_PER_SEC)
++
++#ifndef SCHED_DEADLINE
++#define SCHED_DEADLINE 6
++#endif
++
++#define gettid() syscall(__NR_gettid)
++
++#define ERROR_CHECK(x) \
++	if (x) \
++		fprintf(stderr, "Error at line %d", __LINE__);
++
++void affine(int cpu);
++void burn(unsigned int usec, int sleep);
++int find_cpus_with_capacity(int minmax, cpu_set_t * cpuset);
++
++#endif /* _LTP_EAS_UTIL_H_ */

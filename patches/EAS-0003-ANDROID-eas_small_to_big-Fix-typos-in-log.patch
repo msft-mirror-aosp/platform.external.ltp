@@ -1,0 +1,37 @@
+commit e13ed30ea22fe74895c3f5413408eb914ac7b743
+Author: Quentin Perret <quentin.perret@arm.com>
+Date:   Thu Feb 14 15:40:04 2019 +0000
+
+    ANDROID: eas_small_to_big: Fix typos in log
+    
+    eas_small_to_big incorrectly report its migration threshold as checking
+    for a down migration, and it mentions the small task running for 3
+    milli-seconds instead of seconds.
+    
+    Fix these two typos.
+    
+    Signed-off-by: Quentin Perret <quentin.perret@arm.com>
+    Change-Id: I26d565422b85211f7ab7b56d92ed5bcb1ef24153
+
+diff --git a/testcases/kernel/sched/eas/eas_small_to_big.c b/testcases/kernel/sched/eas/eas_small_to_big.c
+index 27e4a14be..0e2c04a1a 100644
+--- a/testcases/kernel/sched/eas/eas_small_to_big.c
++++ b/testcases/kernel/sched/eas/eas_small_to_big.c
+@@ -32,7 +32,7 @@ static void *task_fn(void *arg LTP_ATTRIBUTE_UNUSED)
+ {
+ 	task_tid = gettid();
+ 
+-	printf("Small task executing for %dms...\n", BURN_SEC);
++	printf("Small task executing for %ds...\n", BURN_SEC);
+ 	burn(BURN_SEC * USEC_PER_SEC, 1);
+ 
+ 	printf("Changing to big task...\n");
+@@ -142,7 +142,7 @@ static void run(void)
+ 
+ 	tst_res(TINFO, "Maximum incorrect cluster time percentage: %d%%",
+ 		MAX_INCORRECT_CLUSTER_PCT);
+-	tst_res(TINFO, "Maximum downmigration latency: %d usec",
++	tst_res(TINFO, "Maximum upmigration latency: %d usec",
+ 		MAX_UPMIGRATE_LATENCY_US);
+ 
+ 	/* configure and enable tracing */

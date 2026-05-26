@@ -1,0 +1,26 @@
+ANDROID: proc01: Android-specific proc files fixes
+
+This fixes failures on some Android devices (especially Qualcomm platforms)
+which have non-upstream proc files that behave unexpectedly.
+Skip /proc/debug/fwdump (expect EINVAL) and /proc/cid/athdiagpfs (expect EIO).
+
+Bug: 148101848
+Test: atest vts_ltp_test_arm:fs.proc01_32bit
+
+diff --git a/testcases/kernel/fs/proc/proc01.c b/testcases/kernel/fs/proc/proc01.c
+index 734d803d5..6e259fb15 100644
+--- a/testcases/kernel/fs/proc/proc01.c
++++ b/testcases/kernel/fs/proc/proc01.c
+@@ -118,6 +118,12 @@
+ 	{"read", "/proc/sys/vm/nr_hugepages", EOPNOTSUPP},
+ 	{"read", "/proc/sys/vm/nr_overcommit_hugepages", EOPNOTSUPP},
+ 	{"read", "/proc/sys/vm/nr_hugepages_mempolicy", EOPNOTSUPP},
++	/* These are added for making sure LTP runs on some of the devices that have non upstream
++	 * proc files. See following commit for more details
++	 *    d59bfa01c ("proc file fixup: This fixes some random qualcomm proc files that act odd")
++	 */
++	{"read", "/proc/debug/fwdump", EINVAL},
++	{"read", "/proc/cid/athdiagpfs", EIO},
+ 	{"read", "/proc/pressure/*", EOPNOTSUPP},
+ 	{"", "", 0}
+ };
