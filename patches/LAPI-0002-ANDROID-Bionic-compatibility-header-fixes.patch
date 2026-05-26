@@ -1,0 +1,129 @@
+ANDROID: Bionic compatibility header fixes
+
+This patch groups various direct commits in AOSP that fix Bionic/Android
+compatibility issues in headers:
+1. Use HAVE_STRUCT_... instead of HAVE_... for ipcbuf.h, sembuf.h, sem.h, shmbuf.h.
+2. Include <linux/openat2.h> if HAVE_LINUX_OPENAT2_H is defined.
+3. Include <linux/time_types.h> and <linux/types.h> in tst_timer.h.
+4. Conditionally define __kernel_timex_timeval and __kernel_timex in clock_adjtime.h.
+
+diff --git a/include/lapi/ipcbuf.h b/include/lapi/ipcbuf.h
+index ee0a9bafb..9631d9ee6 100644
+--- a/include/lapi/ipcbuf.h
++++ b/include/lapi/ipcbuf.h
+@@ -10,7 +10,7 @@
+ #include "config.h"
+ #include "lapi/posix_types.h"
+ 
+-#ifndef HAVE_IPC64_PERM
++#ifndef HAVE_STRUCT_IPC64_PERM
+ 
+ #if defined(__hppa__)
+ #define HAVE_IPC64_PERM
+diff --git a/include/lapi/openat2.h b/include/lapi/openat2.h
+index 03327bdb7..fa79bc934 100644
+--- a/include/lapi/openat2.h
++++ b/include/lapi/openat2.h
+@@ -14,7 +14,12 @@
+ 
+ #include "config.h"
+ 
+-#ifndef HAVE_OPENAT2
++#ifdef HAVE_LINUX_OPENAT2_H
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <linux/openat2.h>
++#else
++
+ /*
+  * Arguments for how openat2(2) should open the target path. If only @flags and
+  * @mode are non-zero, then openat2(2) operates very similarly to openat(2).
+@@ -46,7 +51,9 @@ struct open_how {
+ #define RESOLVE_IN_ROOT		0x10 /* Make all jumps to "/" and ".."
+ 					be scoped inside the dirfd
+ 					(similar to chroot(2)). */
++#endif /* HAVE_LINUX_OPENAT2_H */
+ 
++#ifndef HAVE_OPENAT2
+ static inline int openat2(int dfd, const char *pathname,
+                           struct open_how *how, size_t size)
+ {
+diff --git a/include/lapi/sembuf.h b/include/lapi/sembuf.h
+index 94a43a291..3b0f24012 100644
+--- a/include/lapi/sembuf.h
++++ b/include/lapi/sembuf.h
+@@ -12,7 +12,7 @@
+ #include "tst_timer.h"
+ #include "ipcbuf.h"
+ 
+-#ifndef HAVE_SEMID64_DS
++#ifndef HAVE_STRUCT_SEMID64_DS
+ 
+ #if defined(__mips__)
+ #define HAVE_SEMID64_DS
+diff --git a/include/lapi/sem.h b/include/lapi/sem.h
+index ba559d2f1..e7adac3cf 100644
+--- a/include/lapi/sem.h
++++ b/include/lapi/sem.h
+@@ -7,7 +7,7 @@
+ 
+ #include <sys/sem.h>
+ 
+-#if defined(__GNU_LIBRARY__) && !defined(_SEM_SEMUN_UNDEFINED)
++#ifdef HAVE_STRUCT_SEMUN
+ /* union semun is defined by including <sys/sem.h> */
+ #else
+ /* according to X/OPEN we have to define it ourselves */
+diff --git a/include/lapi/shmbuf.h b/include/lapi/shmbuf.h
+index b0a0fa3d9..248ddcc02 100644
+--- a/include/lapi/shmbuf.h
++++ b/include/lapi/shmbuf.h
+@@ -12,7 +12,7 @@
+ #include "tst_timer.h"
+ #include "ipcbuf.h"
+ 
+-#ifndef HAVE_SHMID64_DS
++#ifndef HAVE_STRUCT_SHMID64_DS
+ 
+ #if defined(__mips__)
+ #define HAVE_SHMID64_DS
+diff --git a/include/tst_timer.h b/include/tst_timer.h
+index 6fb940020..c477753c7 100644
+--- a/include/tst_timer.h
++++ b/include/tst_timer.h
+@@ -12,6 +12,8 @@
+ #ifndef TST_TIMER
+ #define TST_TIMER
+ 
++#include <linux/time_types.h>
++#include <linux/types.h>
+ #include <sched.h>
+ #include <sys/time.h>
+ #include <mqueue.h>
+diff --git a/testcases/kernel/syscalls/clock_adjtime/clock_adjtime.h b/testcases/kernel/syscalls/clock_adjtime/clock_adjtime.h
+index 8250cb92f..63ebf5295 100644
+--- a/testcases/kernel/syscalls/clock_adjtime/clock_adjtime.h
++++ b/testcases/kernel/syscalls/clock_adjtime/clock_adjtime.h
+@@ -20,7 +20,6 @@
+ #include <asm/posix_types.h>
+ #include "lapi/timex.h"
+ 
+-#ifndef __kernel_timex
+ struct __kernel_old_timex {
+ 	unsigned int modes;	/* mode selector */
+ 	__kernel_long_t offset;	/* time offset (usec) */
+@@ -52,11 +51,14 @@ struct __kernel_old_timex {
+ 	int  :32; int  :32; int  :32;
+ };
+ 
++#ifndef HAVE_STRUCT___KERNEL_TIMEX_TIMEVAL
+ struct __kernel_timex_timeval {
+ 	__kernel_time64_t       tv_sec;
+ 	long long		tv_usec;
+ };
++#endif
+ 
++#ifndef HAVE_STRUCT___KERNEL_TIMEX
+ struct __kernel_timex {
+ 	unsigned int modes;	/* mode selector */
+ 	int :32;            /* pad */

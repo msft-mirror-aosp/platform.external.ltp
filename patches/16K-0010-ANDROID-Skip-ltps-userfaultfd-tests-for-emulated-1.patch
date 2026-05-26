@@ -1,0 +1,32 @@
+commit d52db1908c282d8ae9609cfa5e8c35389d5d0be2
+Author: Edward Liaw <edliaw@google.com>
+Date:   Tue Jan 7 00:27:05 2025 +0000
+
+    ANDROID: Skip ltp's userfaultfd tests for emulated 16k pages
+    
+    Userfaultfd will return EOPNOTSUPP when the page size is emulated (see:
+    aosp/3424862).  Skip the test when encountering this error code for now.
+    
+    Bug: 385718478
+    Bug: 384985178
+    Test: vts_ltp_test_x86_64:syscalls.userfaultfd01_64bit
+    Test: vts_ltp_test_x86_64:cve.cve-2022-2590_64bit
+    Change-Id: I6598ce03e574f304bb40df81c672e5a01f1312fc
+    Signed-off-by: Edward Liaw <edliaw@google.com>
+
+diff --git a/include/lapi/userfaultfd.h b/include/lapi/userfaultfd.h
+index c568db977..d52db1908 100644
+--- a/include/lapi/userfaultfd.h
++++ b/include/lapi/userfaultfd.h
+@@ -256,6 +256,11 @@ static inline int safe_userfaultfd(const char *file, const int lineno, int
+ retry:
+ 	ret = tst_syscall(__NR_userfaultfd, flags);
+ 	if (ret == -1) {
++		if (errno == EOPNOTSUPP) {
++			/* TODO: b/384985178 - userfaultfd is not supported when emulating 16k pages */
++			tst_brk_(file, lineno, TCONF | TERRNO,
++				"userfaultfd not supported when emulating 16k pages");
++		}
+ 		if (errno == EPERM) {
+ 			if (retry && !(flags & UFFD_USER_MODE_ONLY)) {
+ 				flags |= UFFD_USER_MODE_ONLY;

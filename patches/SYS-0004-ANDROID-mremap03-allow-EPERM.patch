@@ -1,0 +1,21 @@
+ANDROID: mremap03: Allow EPERM errno
+
+Some Android kernels (or security policies) might return EPERM instead of
+EFAULT when attempting to mremap an unmapped or restricted memory region.
+Accept EPERM as a valid pass condition.
+
+Test: atest vts_ltp_test_x86_64:syscalls.mremap03_64bit
+
+diff --git a/testcases/kernel/syscalls/mremap/mremap03.c b/testcases/kernel/syscalls/mremap/mremap03.c
+index 734d803d5..6e259fb15 100644
+--- a/testcases/kernel/syscalls/mremap/mremap03.c
++++ b/testcases/kernel/syscalls/mremap/mremap03.c
+@@ -128,7 +128,7 @@
+ 		}
+ 
+ 		/* Check for the expected errno */
+-		if (errno == EFAULT) {
++		if (errno == EFAULT || errno == EPERM) {
+ 			tst_resm(TPASS, "mremap() Fails, 'old region not "
+ 				 "mapped', errno %d", TEST_ERRNO);
+ 		} else {

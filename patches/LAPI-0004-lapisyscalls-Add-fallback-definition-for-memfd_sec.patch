@@ -1,0 +1,32 @@
+commit fe87e9b078b11fb8d0d40484dc7672c6f46c4892
+Author: Edward Liaw <edliaw@google.com>
+Date:   Thu Jul 11 00:42:21 2024 +0000
+
+    lapi/syscalls: Add fallback definition for memfd_secret on arm
+    
+    memfd_secret is not implemented on 32bit arm, but this change creates a
+    fallback definition so that it will return -1 and ENOSYS when calling
+    syscall(__NR_memfd_secret, 0).  This will allow tests such as accept03,
+    readahead01 and splice07 that use memfd_secret to skip with TCONF
+    
+    Reported-by: Nobuhiro Iwamatsu <nobuhiro1.iwamatsu@toshiba.co.jp>
+    Suggested-by: Cyril Hrubis <chrubis@suse.cz>
+    Signed-off-by: Edward Liaw <edliaw@google.com>
+    Reviewed-by: Cyril Hrubis <chrubis@suse.cz>
+    
+    (cherry picked from commit 87c632c8bfbb772efde047e83e72c215bfeb1aba)
+    Bug: 348101848
+    Test: atest vts_ltp_test_arm
+    Change-Id: Ib4a4e3c4b1c4b0603431260cf3b8ae0c343fc791
+    Signed-off-by: Edward Liaw <edliaw@google.com>
+
+diff --git a/include/lapi/syscalls/arm.in b/include/lapi/syscalls/arm.in
+index 693644f83..8e76ad164 100644
+--- a/include/lapi/syscalls/arm.in
++++ b/include/lapi/syscalls/arm.in
+@@ -398,4 +398,5 @@ landlock_create_ruleset 444
+ landlock_add_rule 445
+ landlock_restrict_self 446
++memfd_secret 447
+ process_mrelease 448
+ futex_waitv 449

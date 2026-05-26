@@ -1,0 +1,31 @@
+commit 9a8e15e531df1a6ff89c1eba0b0bc9eda95e635d
+Author: Steve Muckle <smuckle@google.com>
+Date:   Tue Dec 10 13:31:21 2019 -0800
+
+    eas: sched_boost: move test pass to individual tests
+    
+    The test currently reports a pass after potentially failing the
+    individual testcases.
+    
+    Change-Id: Id0918dd8eb9fdb58b5297e315610c13fa8db6d9d
+    Signed-off-by: Steve Muckle <smuckle@google.com>
+
+diff --git a/testcases/kernel/sched/eas/sched_boost.c b/testcases/kernel/sched/eas/sched_boost.c
+index 84d17084c..09d69e0ab 100644
+--- a/testcases/kernel/sched/eas/sched_boost.c
++++ b/testcases/kernel/sched/eas/sched_boost.c
+@@ -128,8 +128,13 @@ static void check_results(void)
+ 				i, test_boost[i], test_utils[i],
+ 				target_util - TEST_MARGIN,
+ 				target_util + TEST_MARGIN);
++		else
++			tst_res(TPASS, "Test %i (boost %d) passed with "
++				"util %d (allowed %d - %d).\n",
++				i, test_boost[i], test_utils[i],
++				target_util - TEST_MARGIN,
++				target_util + TEST_MARGIN);
+ 	}
+-	tst_res(TPASS, "Boosted utilizations within expected range.");
+ }
+ 
+ static void run(void)
