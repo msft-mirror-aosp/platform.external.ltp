@@ -29,7 +29,7 @@ sleep 1
 echo 40M > "$test_path/$memory_limit"
 
 # turn off swap, and swapoff will be killed
-for s in $(cut -F1 /proc/swaps | tail -n +2); do
+for s in $(cut -f1 /proc/swaps | tail -n +2); do
 	swapoff $s
 done
 sleep 1

@@ -65,9 +65,6 @@ For users
 :doc:`users/test_catalog`
    The LTP test catalog
 
-:doc:`users/test_catalog`
-   The LTP test catalog
-
 For developers
 --------------
 

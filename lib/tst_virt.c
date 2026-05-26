@@ -29,12 +29,12 @@
 
 static int file_exist(const char *path)
 {
-	struct stat st;
+       struct stat st;
 
-	if (!access(path, R_OK) && !stat(path, &st))
-		return 1;
+       if (!access(path, R_OK) && !stat(path, &st))
+               return 1;
 
-	return 0;
+       return 0;
 }
 
 static int is_kvm(void)
@@ -56,9 +56,9 @@ static int is_kvm(void)
 
 	SAFE_FCLOSE(NULL, cpuinfo);
 
-	if (file_exist("/dev/vda") || file_exist("/dev/block/vda")
-			|| file_exist("/sys/block/vda"))
-		found = 1;
+       if (file_exist("/dev/vda") || file_exist("/dev/block/vda")
+                       || file_exist("/sys/block/vda"))
+               found = 1;
 
 	return found;
 }

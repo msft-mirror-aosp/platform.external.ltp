@@ -257,6 +257,11 @@ static inline int safe_userfaultfd(const char *file, const int lineno, int
 retry:
 	ret = tst_syscall(__NR_userfaultfd, flags);
 	if (ret == -1) {
+		if (errno == EOPNOTSUPP) {
+			/* TODO: b/384985178 - userfaultfd is not supported when emulating 16k pages */
+			tst_brk_(file, lineno, TCONF | TERRNO,
+				"userfaultfd not supported when emulating 16k pages");
+		}
 		if (errno == EPERM) {
 			if (retry && !(flags & UFFD_USER_MODE_ONLY)) {
 				flags |= UFFD_USER_MODE_ONLY;
