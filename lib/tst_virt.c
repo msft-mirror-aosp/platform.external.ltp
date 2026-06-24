@@ -26,7 +26,6 @@
 #include <sys/stat.h>
 #include "test.h"
 #include "tso_safe_macros.h"
-
 static int file_exist(const char *path)
 {
        struct stat st;
