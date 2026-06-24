@@ -30,13 +30,6 @@
  */
 #define MIN_SWAP_FILES 15
 
-/*
- * MAX_SWAPFILES from the internal kernel implementation is currently <23, 29>,
- * depending on kernel configuration (see man swapon(2)). Chose small enough
- * value for future changes.
- */
-#define MIN_SWAP_FILES 15
-
 #define MNTPOINT	"mntpoint"
 #define TEST_FILE	MNTPOINT"/testswap"
 
