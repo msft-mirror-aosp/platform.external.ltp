@@ -47,12 +47,31 @@ if ! [ -f $TOOLS_DUMP_DIR/make_dry_run.dump ]; then
   DOCKER_UID=$(id -u)
   DOCKER_GID=$(id -g)
 
+  # Detect if docker works without sudo
+  DOCKER_CMD="docker"
+  if ! docker ps >/dev/null 2>&1; then
+    if [ "$NON_INTERACTIVE" = "1" ]; then
+      DOCKER_CMD="sudo -n docker"
+    else
+      DOCKER_CMD="sudo docker"
+    fi
+  fi
+
   echo "LTP make dry_run not dumped. Dumping..."
   echo ""
-  echo "This may need your sudo password in order to access docker:"
+  if [[ "$DOCKER_CMD" == *"sudo"* ]]; then
+    echo "This may need your sudo password in order to access docker:"
+  fi
+
+  # Detect if we have a TTY for docker run
+  TTY_FLAG="-it"
+  if [ ! -t 0 ]; then
+    TTY_FLAG="-i"
+  fi
+
   set -x
-  sudo docker build --build-arg userid=$DOCKER_UID --build-arg groupid=$DOCKER_GID --build-arg username=$DOCKER_USERNAME --build-arg ltproot=$LTP_ROOT -t android-gen-ltp .
-  sudo docker run -it --rm -v $LTP_ROOT:/src -w /src/android/tools android-gen-ltp
+  $DOCKER_CMD build --build-arg userid=$DOCKER_UID --build-arg groupid=$DOCKER_GID --build-arg username=$DOCKER_USERNAME --build-arg ltproot=$LTP_ROOT -t android-gen-ltp .
+  $DOCKER_CMD run $TTY_FLAG --rm -v $LTP_ROOT:/src -w /src/android/tools android-gen-ltp
   set +x
 fi
 
