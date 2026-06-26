@@ -232,67 +232,82 @@ To run LTP tests for x86 platform, you can do:
 * `atest vts_ltp_test_x86_64`
 
 
-Upgrade LTP to the latest upstream release
--------------------------------------------
+Upgrade LTP source code
+-----------------------
 
-LTP has three releases per year. Keeping the current project aligned with the
-upstream development is important to get additional tests and bug-fixes.
+While the official LTP releases from upstream are quarterly (see [GitHub releases](https://github.com/linux-test-project/ltp/releases)), the `external/ltp` project in Android is configured to track upstream master branch commits (commit-by-commit) to ensure more regular, often monthly, updates within Android.
 
-### Merge the changes
+The `platform/external/ltp` project has a tracking branch `upstream-master` (https://android.googlesource.com/platform/external/ltp/+/refs/heads/upstream-master) that mirrors changes from upstream [github.com/linux-test-project/ltp](https://github.com/linux-test-project/ltp).
 
-AOSP external projects have a branch that track the changes to the upstream
-repository, called `aosp/upstream-master`.
-That branch is automatically updated with:
+### Automatic Upgrade (Recommended)
 
-`repo sync .`
+To upgrade LTP to the latest upstream commit and automatically regenerate
+Android build files, run the following command from your Android checkout root (`$ANDROID_BUILD_TOP`):
 
-Create a new branch to work on the merge, that will contain the merge commit
-itself and conflicts resolutions:
-
-`repo start mymerge .`
-
-Find the commit for the latest LTP release, for example
-
-```
-$ git log --oneline aosp/upstream-master
-c00f96994 (aosp/upstream-master) openposix/Makefile: Use tabs instead of spaces
-a90664f8d Makefile: Use SPDX in Makefile
-0fb171f2b LTP 20210524
+```bash
+tools/external_updater/updater.sh update external/ltp
 ```
 
-Force the creation of a merge commit (no fast-forward).
+This tool will automatically:
+1. Fetch the latest commits from the upstream repository.
+2. Merge the changes into the local branch.
+3. Trigger the post-update hook (`post_update.sh`) which:
+   - Restores Android-specific files and custom runlists during upgrades.
+   - Automatically runs the Soong blueprint generator (`gen_android_build.sh`)
+     to regenerate `Android.bp` files (requires Docker under the hood; see `go/docker` for rootless setup).
+4. Create a Git commit with the upgrade.
 
-`git merge <release commit> --no-ff`
+*(Note: If blueprint regeneration is skipped in non-interactive environments due to Docker permissions, run `cd android/tools && ./gen_android_build.sh --update` manually afterward).*
 
-Fix all the merge conflicts ensuring that the project still builds, by
-periodically running:
+### Manual Upgrade
 
-`git clean -dfx && make autotools && ./configure && make -j`
+If you need to manually perform the upgrade without using `external_updater`, follow these steps:
 
-Commit the LTP version string
-```
-git describe <release commit> > VERSION
-git add VERSION
-```
+1. Sync the upstream tracking branch:
+   ```bash
+   repo sync .
+   ```
+2. Create a new branch to work on the merge:
+   ```bash
+   repo start mymerge .
+   ```
+3. Find the latest commit or release from the upstream tracking branch (`goog/upstream-master`):
+   ```bash
+   git log --oneline goog/upstream-master
+   ```
+4. Merge the upstream commit:
+   ```bash
+   git merge <upstream commit> --no-ff
+   ```
+5. Resolve any merge conflicts, verifying the build with:
+   ```bash
+   git clean -dfx && make autotools && ./configure && make -j
+   ```
+6. Regenerate Android build targets manually using the helper script:
+   ```bash
+   git clean -dfx && android/tools/gen_android_build.sh && git clean -dfx && mma .
+   ```
 
-### Update the Android build targets
+### Manual Verification
 
-Building LTP with the Android build system requires the additional Android
-build configuration files mentioned above.
-A new LTP release may have disabled existing tests or enabled new ones, so the
-Android build configurations must be updated accordingly.
-This is done by the script `android/tools/gen_android_build.sh`:
+After upgrading (via either method), verify the build and run tests:
+1. Build LTP: `mma .` (from `external/ltp`).
+2. Run tests: `atest vts_ltp_test_arm` or `atest vts_ltp_test_arm_64`.
 
-`git clean -dfx && android/tools/gen_android_build.sh && git clean -dfx && mma .`
+### Writing the Commit Message (Comparing Test Suites)
 
-This command will possibly update the files `android/Android.ltp.mk`,
-`android/ltp_package_list.mk` and `gen.bp`.
+It is good practice to write a detailed commit message presenting the differences (added/removed tests) in the new LTP version. 
 
-It's a good practice to create an explanatory commit message that presents the
-differences in the test suite.
-`android/tools/compare_ltp_projects.py` is a script that helps comparing the tests available in two different LTP folders.
+You can use the helper script `android/tools/compare_ltp_projects.py` to compare the tests between the old and new LTP directories:
 
+```bash
 LTP_NEW=$ANDROID_BUILD_TOP/external/ltp
 LTP_OLD=/tmp/ltp-base
-git archive aosp/master | tar -x -C $LTP_OLD
+mkdir -p $LTP_OLD
+
+# Extract the old version (from main branch) to a temp directory
+git archive goog/main | tar -x -C $LTP_OLD
+
+# Compare the two directories
 android/tools/compare_ltp_projects.py --ltp-new $LTP_NEW --ltp-old $LTP_OLD
+```
