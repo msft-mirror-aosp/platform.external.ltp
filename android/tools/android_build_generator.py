@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #
 # Copyright 2016 - The Android Open Source Project
 #
@@ -15,29 +15,26 @@
 # limitations under the License.
 #
 
+# Parses the output of parse_ltp_{make,make_install} and generates a
+# corresponding Android.bp.
+#
+# This process is split into two steps so this second step can later be replaced
+# with an Android.bp generator.
+
 import argparse
+import fileinput
 import json
 import os
-import sys
-import shutil
-import subprocess
-import pwd
 import re
-
-# Ensure we can import parser modules from the same directory
-tools_dir = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(tools_dir)
 
 import make_parser
 import make_install_parser
 
-# File paths resolved relative to script's tools_dir
-MAKE_DRY_RUN_FILE_NAME = os.path.join(tools_dir, 'dump', 'make_dry_run.dump')
-MAKE_INSTALL_DRY_RUN_FILE_NAME = os.path.join(tools_dir, 'dump', 'make_install_dry_run.dump')
-DISABLED_TESTS_FILE_NAME = os.path.join(tools_dir, 'disabled_tests.txt')
-DISABLED_LIBS_FILE_NAME = os.path.join(tools_dir, 'disabled_libs.txt')
-DISABLED_CFLAGS_FILE_NAME = os.path.join(tools_dir, 'disabled_cflags.txt')
-
+MAKE_DRY_RUN_FILE_NAME = os.path.join('dump', 'make_dry_run.dump')
+MAKE_INSTALL_DRY_RUN_FILE_NAME = os.path.join('dump', 'make_install_dry_run.dump')
+DISABLED_TESTS_FILE_NAME = 'disabled_tests.txt'
+DISABLED_LIBS_FILE_NAME = 'disabled_libs.txt'
+DISABLED_CFLAGS_FILE_NAME = 'disabled_cflags.txt'
 TARGET_LIST = [
     {
         "arch": "arm",
@@ -68,7 +65,21 @@ TARGET_LIST = [
     },
 ]
 
+
 class BuildGenerator(object):
+    '''A class to parse make output and convert the result to Android.bp modules.
+
+    Attributes:
+        _bp_result: directory of list of strings for blueprint file keyed by target name
+        _prebuilt_bp_result: directory of list of strings for blueprint keyed by target
+            name
+        _custom_cflags: dict of string (module name) to lists of strings (cflags
+            to add for said module)
+        _unused_custom_cflags: set of strings; tracks the modules with custom
+            cflags that we haven't yet seen
+        _packages: list of strings of packages for package list file
+    '''
+
     def __init__(self, custom_cflags):
         self._bp_result = {}
         self._prebuilt_bp_result = {}
@@ -77,23 +88,56 @@ class BuildGenerator(object):
         self._packages = []
 
     def UniqueKeepOrder(self, sequence):
+        '''Get a copy of list where items are unique and order is preserved.
+
+        Args:
+          sequence: a sequence, can be a list, tuple, or other iterable
+
+        Returns:
+            a list where items copied from input sequence are unique
+            and order is preserved.
+        '''
         seen = set()
         return [x for x in sequence if not (x in seen or seen.add(x))]
 
     def ReadCommentedText(self, file_path):
+        '''Read pound commented text file into a list of lines.
+
+        Comments or empty lines will be excluded
+
+        Args:
+            file_path: string
+        '''
         ret = set()
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as f:
-                lines = [line.strip() for line in f.readlines()]
-                ret = set([s for s in lines if s and not s.startswith('#')])
+        with open(file_path, 'r') as f:
+            lines = [line.strip() for line in f.readlines()]
+            ret = set([s for s in lines if s and not s.startswith('#')])
+
         return ret
 
     def ArTargetToLibraryName(self, ar_target):
+        '''Convert ar target to library name.
+
+        Args:
+            ar_target: string
+        '''
         return os.path.basename(ar_target)[len('lib'):-len('.a')]
 
     def BuildExecutable(self, cc_target, local_src_files, local_cflags,
                         local_c_includes, local_libraries, ltp_libs,
                         ltp_libs_used, ltp_names_used):
+        '''Build a test module.
+
+        Args:
+            cc_target: string
+            local_src_files: list of string
+            local_cflags: list of string
+            local_c_includes: list of string
+            local_libraries: list of string
+            ltp_libs: list of string
+            ltp_libs_used: set of string
+            ltp_names_used: set of string, set of already used cc_target basenames
+        '''
         base_name = os.path.basename(cc_target)
         if base_name in ltp_names_used:
             print(f'ERROR: base name {base_name} of cc_target {cc_target} already used. Skipping...')
@@ -104,6 +148,7 @@ class BuildGenerator(object):
             local_cflags.extend(self._custom_cflags[cc_target])
             self._unused_custom_cflags.remove(cc_target)
 
+        # ltp_defaults already adds the include directory
         local_c_includes = [i for i in local_c_includes if i != 'include']
         target_name = f'ltp_{base_name}'
         target_bp = []
@@ -169,6 +214,14 @@ class BuildGenerator(object):
 
     def BuildStaticLibrary(self, ar_target, local_src_files, local_cflags,
                            local_c_includes):
+        '''Build a library module.
+
+        Args:
+            ar_target: string
+            local_src_files: list of string
+            local_cflags: list of string
+            local_c_includes: list of string
+        '''
         target_name = 'libltp_%s' % self.ArTargetToLibraryName(ar_target)
         target_bp = []
         target_bp.append('')
@@ -197,13 +250,21 @@ class BuildGenerator(object):
         self._bp_result[target_name] = target_bp
 
     def BuildShellScript(self, install_target, local_src_file):
+        '''Build a shell script.
+
+        Args:
+            install_target: string
+            local_src_file: string
+        '''
+        base_name = os.path.basename(install_target)
+        bp_result = []
+
         module = 'ltp_%s' % install_target.replace('/', '_')
         self._packages.append(module)
 
         module_dir = os.path.dirname(install_target)
         module_stem = os.path.basename(install_target)
 
-        bp_result = []
         bp_result.append('')
         bp_result.append('sh_test {')
         bp_result.append('    name: "%s",' % module)
@@ -212,9 +273,19 @@ class BuildGenerator(object):
         bp_result.append('    filename: "%s",' % module_stem)
         bp_result.append('    compile_multilib: "both",')
         bp_result.append('}')
+
         self._bp_result[module] = bp_result
 
     def BuildPrebuiltBp(self, install_target, local_src_file):
+        '''Build a prebuild module for using Android.bp.
+
+        Args:
+            install_target: string
+            local_src_file: string
+        '''
+        base_name = os.path.basename(install_target)
+        # The original local_src_file is from external/ltp, but for bp the root
+        # will be external/ltp/testcases.
         src = local_src_file.replace('testcases/', '', 1)
         module = 'ltp_%s' % install_target.replace('/', '_')
         module_dir = os.path.dirname(install_target)
@@ -230,9 +301,16 @@ class BuildGenerator(object):
         bp_result.append('    compile_multilib: "both",')
         bp_result.append('    auto_gen_config: false,')
         bp_result.append('}')
+
         self._prebuilt_bp_result[module] = bp_result
 
     def HandleParsedRule(self, line, rules):
+        '''Prepare parse rules.
+
+        Args:
+            line: string
+            rules: dictionary {string, dictionary}
+        '''
         groups = re.match(r'(.*)\[\'(.*)\'\] = \[(.*)\]', line).groups()
         rule = groups[0]
         rule_key = groups[1]
@@ -245,6 +323,11 @@ class BuildGenerator(object):
         rules.setdefault(rule, {})[rule_key] = rule_value
 
     def ParseInput(self, input_list, ltp_root):
+        '''Parse a interpreted make output and produce Android.bp module.
+
+        Args:
+            input_list: list of string
+        '''
         disabled_tests = self.ReadCommentedText(DISABLED_TESTS_FILE_NAME)
         disabled_libs = self.ReadCommentedText(DISABLED_LIBS_FILE_NAME)
         disabled_cflags = self.ReadCommentedText(DISABLED_CFLAGS_FILE_NAME)
@@ -253,29 +336,57 @@ class BuildGenerator(object):
         for line in input_list:
             self.HandleParsedRule(line.strip(), rules)
 
+        # .a target -> .o files
         ar = rules.get('ar', {})
+        # executable target -> .o files
         cc_link = rules.get('cc_link', {})
+        # .o target -> .c file
         cc_compile = rules.get('cc_compile', {})
+        # executable target -> .c files
         cc_compilelink = rules.get('cc_compilelink', {})
+        # Target name -> CFLAGS passed to gcc
         cc_flags = rules.get('cc_flags', {})
+        # Target name -> -I paths passed to gcc
         cc_includes = rules.get('cc_includes', {})
+        # Target name -> -l paths passed to gcc
         cc_libraries = rules.get('cc_libraries', {})
+        # target -> prebuilt source
         install = rules.get('install', {})
 
+        # All libraries used by any LTP test (built or not)
         ltp_libs = set(self.ArTargetToLibraryName(i) for i in ar.keys())
+        # All libraries used by the LTP tests we actually build
         ltp_libs_used = set()
         ltp_names_used = set()
 
+        # Remove -Wno-error from cflags, we don't want to print warnings.
+        # Silence individual warnings in ltp_defaults or fix them.
         for target in cc_flags:
             if '-Wno-error' in cc_flags[target]:
                 cc_flags[target].remove('-Wno-error')
 
-        print("Disabled lib tests check...")
+        print(
+            "Disabled lib tests: Test cases listed here are "
+            "suggested to be disabled since they require a disabled library. "
+            "Please copy and paste them into disabled_tests.txt\n")
         for i in cc_libraries:
             if len(set(cc_libraries[i]).intersection(disabled_libs)) > 0:
                 if not os.path.basename(i) in disabled_tests:
-                    print(f"Suggested disabled test: {os.path.basename(i)}")
+                    print(os.path.basename(i))
 
+        print("Disabled_cflag tests: Test cases listed here are "
+              "suggested to be disabled since they require a disabled cflag. "
+              "Please copy and paste them into disabled_tests.txt\n")
+        for i in cc_flags:
+            if len(set(cc_flags[i]).intersection(disabled_cflags)) > 0:
+                module_name = os.path.basename(i)
+                idx = module_name.find('_')
+                if idx > 0:
+                    module_name = module_name[:idx]
+                print(module_name)
+
+        # Remove include directories that don't exist. They're an error in
+        # Soong.
         for target in cc_includes:
             cc_includes[target] = [i for i in cc_includes[target] if os.path.isdir(os.path.join(ltp_root, i))]
 
@@ -286,6 +397,8 @@ class BuildGenerator(object):
             local_src_files = []
             src_files = cc_compilelink[target]
             for i in src_files:
+                # some targets may have a mix of .c and .o files in srcs
+                # find the .c files to build those .o from cc_compile targets
                 if i.endswith('.o'):
                     if i not in cc_compile:
                         raise Exception("Not found: %s when trying to compile target %s" % (i, target))
@@ -310,6 +423,10 @@ class BuildGenerator(object):
             local_cflags = set()
             local_c_includes = set()
             local_libraries = cc_libraries[target]
+            # Accumulate flags for all .c files needed to build the .o files.
+            # (Android.bp requires a consistent set of flags across a given target.
+            # Thankfully using the superset of all flags in the target works fine
+            # with LTP tests.)
             for obj in cc_link[target]:
                 for i in cc_compile[obj]:
                     local_src_files.add(i)
@@ -327,12 +444,16 @@ class BuildGenerator(object):
                                  ltp_libs_used, ltp_names_used)
 
         for target in ar:
+            # Disabled ltp library is already excluded
+            # since it won't be in ltp_libs_used
             if not self.ArTargetToLibraryName(target) in ltp_libs_used:
                 continue
 
             local_src_files = set()
             local_cflags = set()
             local_c_includes = set()
+
+            # TODO: disabled cflags
 
             for obj in ar[target]:
                 for i in cc_compile[obj]:
@@ -353,7 +474,18 @@ class BuildGenerator(object):
                                     local_c_includes)
 
         for target in install:
-            if target in disabled_tests or os.path.basename(target) in disabled_tests:
+            # Check if the absolute path to the prebuilt (relative to LTP_ROOT)
+            # is disabled. This is helpful in case there are duplicates with basename
+            # of the prebuilt.
+            #  e.g.
+            #   ./ testcases / kernel / fs / fs_bind / move / test01
+            #   ./ testcases / kernel / fs / fs_bind / cloneNS / test01
+            #   ./ testcases / kernel / fs / fs_bind / regression / test01
+            #   ./ testcases / kernel / fs / fs_bind / rbind / test01
+            #   ./ testcases / kernel / fs / fs_bind / bind / test01
+            if target in disabled_tests:
+                continue
+            if os.path.basename(target) in disabled_tests:
                 continue
             local_src_files = install[target]
             assert len(local_src_files) == 1
@@ -364,6 +496,11 @@ class BuildGenerator(object):
                 self.BuildPrebuiltBp(target, local_src_files[0])
 
     def WriteAndroidBp(self, output_path):
+        '''Write parse result to blueprint file.
+
+        Args:
+            output_path: string
+        '''
         with open(output_path, 'a') as f:
             for k in sorted(self._bp_result.keys()):
                 f.write('\n'.join(self._bp_result[k]))
@@ -371,6 +508,11 @@ class BuildGenerator(object):
             self._bp_result = {}
 
     def WritePrebuiltAndroidBp(self, output_path):
+        '''Write parse result to blueprint file.
+
+        Args:
+            output_path: string
+        '''
         bp_result = []
         bp_result.append('')
         bp_result.append('package {')
@@ -380,6 +522,10 @@ class BuildGenerator(object):
             bp_result.extend(self._prebuilt_bp_result[k])
         self._prebuilt_bp_result = {}
         with open(output_path, 'a') as f:
+            for k in sorted(self._prebuilt_bp_result.keys()):
+                f.write('\n'.join(self._prebuilt_bp_result[k]))
+                f.write('\n')
+            self._prebuilt_bp_result = {}
             f.write('\n'.join(bp_result))
             f.write('\n')
 
@@ -471,6 +617,11 @@ class BuildGenerator(object):
         return bp_result
 
     def WriteLtpMainAndroidBp(self, output_path):
+        '''Write the blueprint file of ltp main module.
+
+        Args:
+            output_path: string
+        '''
         bp_result = []
         bp_result.append('')
         bp_result.append('package {')
@@ -491,128 +642,68 @@ class BuildGenerator(object):
             f.write('\n')
 
     def ParseAll(self, ltp_root):
+        '''Parse outputs from both 'make' and 'make install'.
+
+        Args:
+            ltp_root: string
+        '''
         parser = make_parser.MakeParser(ltp_root)
         self.ParseInput(parser.ParseFile(MAKE_DRY_RUN_FILE_NAME), ltp_root)
         parser = make_install_parser.MakeInstallParser(ltp_root)
         self.ParseInput(parser.ParseFile(MAKE_INSTALL_DRY_RUN_FILE_NAME), ltp_root)
 
     def GetUnusedCustomCFlagsTargets(self):
+        '''Get targets that have custom cflags, but that weren't built.'''
         return list(self._unused_custom_cflags)
 
-def get_docker_command():
-    try:
-        res = subprocess.run(['docker', 'ps'], capture_output=True, text=True)
-        if res.returncode == 0:
-            return ['docker']
-    except FileNotFoundError:
-        pass
-
-    try:
-        res = subprocess.run(['sudo', 'docker', 'ps'], capture_output=True, text=True)
-        if res.returncode == 0:
-            return ['sudo', 'docker']
-    except Exception:
-        pass
-
-    return None
-
-def prepare_license_header(license_txt_path, output_path, script_name):
-    with open(license_txt_path, 'r') as f:
-        lines = f.readlines()
-    commented_lines = [line.replace('#', '//') for line in lines]
-    
-    with open(output_path, 'w') as f:
-        f.writelines(commented_lines)
-        f.write('\n')
-        f.write(f'// This file is autogenerated by {script_name}\n')
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate Android.ltp.mk / gen.bp.")
-    parser.add_argument('-u', '--update', action='store_true', help="Update option to clean dumps and regenerate.")
+    parser = argparse.ArgumentParser(
+        description='Generate Android.bp from parsed LTP make output')
+    parser.add_argument(
+        '--ltp_root', dest='ltp_root', required=True, help='LTP root dir')
+    parser.add_argument(
+        '--output_prebuilt_ltp_testcase_bp_path',
+        dest='output_prebuilt_ltp_testcase_bp_path',
+        required=True,
+        help='output prebuilt test case blueprint path')
+    parser.add_argument(
+        '--output_ltp_main_bp_path',
+        dest='output_ltp_main_bp_path',
+        required=True,
+        help='output ltp main blueprint path')
+    parser.add_argument(
+        '--output_bp_path',
+        dest='output_bp_path',
+        required=True,
+        help='output blueprint path')
+    parser.add_argument(
+        '--custom_cflags_file',
+        dest='custom_cflags_file',
+        required=True,
+        help='file with custom per-module cflags. empty means no file.')
     args = parser.parse_args()
 
-    ltp_android_dir = os.path.realpath(os.path.join(tools_dir, '..'))
-    ltp_root = os.path.realpath(os.path.join(ltp_android_dir, '..'))
-    
-    custom_cflags_path = os.path.join(tools_dir, 'custom_cflags.json')
-    output_bp = os.path.join(ltp_root, 'gen.bp')
-    output_ltp_testcase_bp = os.path.join(ltp_root, 'testcases', 'Android.bp')
-    output_ltp_main_bp = os.path.join(ltp_root, 'android', 'Android.bp')
-    
-    dump_dir = os.path.join(tools_dir, 'dump')
-
-    if args.update:
-        print("Update option enabled. Cleaning existing dumps...")
-        if os.path.exists(dump_dir):
-            shutil.rmtree(dump_dir)
-
-    # 1. Check if make dry run needs to be dumped via Docker
-    if not os.path.exists(MAKE_DRY_RUN_FILE_NAME):
-        docker_cmd = get_docker_command()
-        if not docker_cmd:
-            print("Error: docker command not found or requires sudo privileges but failed.")
-            sys.exit(1)
-
-        uid = os.getuid()
-        gid = os.getgid()
-        username = pwd.getpwuid(uid).pw_name
-        
-        print("LTP make dry_run not dumped. Dumping using Docker container...")
-        
-        # Build docker image
-        build_cmd = docker_cmd + [
-            'build',
-            '--build-arg', f'userid={uid}',
-            '--build-arg', f'groupid={gid}',
-            '--build-arg', f'username={username}',
-            '--build-arg', f'ltproot={ltp_root}',
-            '-t', 'android-gen-ltp',
-            tools_dir
-        ]
-        print(f"Running: {' '.join(build_cmd)}")
-        subprocess.run(build_cmd, check=True)
-
-        # Run docker container
-        tty_flag = '-it' if sys.stdin.isatty() else '-i'
-        run_cmd = docker_cmd + [
-            'run',
-            tty_flag,
-            '--rm',
-            '-v', f'{ltp_root}:/src',
-            '-w', '/src/android/tools',
-            'android-gen-ltp'
-        ]
-        print(f"Running: {' '.join(run_cmd)}")
-        subprocess.run(run_cmd, check=True)
-
-    # 2. Initialize blueprint files with AOSP license header
-    license_txt_path = os.path.join(ltp_android_dir, 'AOSP_license_text.txt')
-    script_name = os.path.basename(__file__)
-    
-    print("Writing license headers to blueprint files...")
-    prepare_license_header(license_txt_path, output_bp, script_name)
-    prepare_license_header(license_txt_path, output_ltp_testcase_bp, script_name)
-    prepare_license_header(license_txt_path, output_ltp_main_bp, script_name)
-
-    # 3. Run blueprint generation
-    print("Parsing LTP make dry_run output and generating Soong configuration...")
-    
     custom_cflags = {}
-    if os.path.exists(custom_cflags_path):
-        with open(custom_cflags_path) as f:
+    if args.custom_cflags_file:
+        # The file is expected to just be a JSON map of string -> [string], e.g.
+        # {"testcases/kernel/syscalls/getcwd/getcwd02": ["-DFOO", "-O3"]}
+        with open(args.custom_cflags_file) as f:
             custom_cflags = json.load(f)
 
     generator = BuildGenerator(custom_cflags)
-    generator.ParseAll(ltp_root)
-    generator.WritePrebuiltAndroidBp(output_ltp_testcase_bp)
-    generator.WriteLtpMainAndroidBp(output_ltp_main_bp)
-    generator.WriteAndroidBp(output_bp)
+    generator.ParseAll(args.ltp_root)
+    generator.WritePrebuiltAndroidBp(args.output_prebuilt_ltp_testcase_bp_path)
+    generator.WriteLtpMainAndroidBp(args.output_ltp_main_bp_path)
+    generator.WriteAndroidBp(args.output_bp_path)
 
     unused_cflags_targs = generator.GetUnusedCustomCFlagsTargets()
     if unused_cflags_targs:
-        print(f"NOTE: Tests had custom cflags, but were never seen: {', '.join(unused_cflags_targs)}")
+        print('NOTE: Tests had custom cflags, but were never seen: {}'.format(
+            ', '.join(unused_cflags_targs)))
 
-    print("Blueprint generation finished successfully!")
+    print('Finished!')
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()
