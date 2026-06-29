@@ -40,3 +40,21 @@ if [ -n "$OLD_PATH" ]; then
 else
   echo "Git merge mode detected. android/ directory and runlists should be preserved."
 fi
+
+# 2. Attempt to regenerate Android blueprints
+GEN_SH="$NEW_PATH/android/tools/gen_android_build.sh"
+
+if [ -f "$GEN_SH" ]; then
+  echo "Triggering Android build blueprint regeneration..."
+  # Run the generator in its directory, and don't fail the post_update if it fails
+  (cd "$NEW_PATH/android/tools" && NON_INTERACTIVE=1 ./gen_android_build.sh --update </dev/null) || {
+    echo "========================================================================"
+    echo "WARNING: Failed to automatically regenerate Android blueprints."
+    echo "This usually happens if Docker is not available or lacks permissions."
+    echo "Please run the generator manually to update blueprints:"
+    echo "  cd android/tools && ./gen_android_build.sh --update"
+    echo "========================================================================"
+  }
+else
+  echo "Warning: Blueprint generator script not found at $GEN_SH"
+fi
