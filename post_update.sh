@@ -58,3 +58,80 @@ if [ -f "$GEN_SH" ]; then
 else
   echo "Warning: Blueprint generator script not found at $GEN_SH"
 fi
+
+# 3. Generate detailed test comparison summary and update commit message via git commit --amend
+echo "Generating test comparison summary and updating commit message..."
+
+cd "$NEW_PATH"
+
+# Extract version from METADATA
+NEW_VER=$(grep -E '^[[:space:]]*version:' METADATA 2>/dev/null | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+if [ -z "$NEW_VER" ]; then
+  NEW_VER=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+fi
+
+# Determine if this is a Tag update or a Commit SHA update
+if [[ "$NEW_VER" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  CURR_DATE=$(date +%Y%m%d)
+  TITLE="LTP $CURR_DATE update"
+  TYPE_DESC="Upstream commit: https://github.com/linux-test-project/ltp/commit/$NEW_VER"
+else
+  TITLE="LTP $NEW_VER release update"
+  TYPE_DESC="Release note: https://github.com/linux-test-project/ltp/releases/tag/$NEW_VER"
+fi
+
+# Extract test comparison diff
+TEST_DIFF=""
+COMPARE_PY="$NEW_PATH/android/tools/compare_ltp_projects.py"
+if [ -f "$COMPARE_PY" ]; then
+  if [ -n "$OLD_PATH" ] && [ -d "$OLD_PATH" ]; then
+    TEST_DIFF=$(python3 "$COMPARE_PY" --ltp-old "$OLD_PATH" --ltp-new "$NEW_PATH" 2>/dev/null || true)
+  else
+    OLD_RUNTEST_DIR=$(mktemp -d)
+    if git archive HEAD~1 runtest | tar -x -C "$OLD_RUNTEST_DIR" 2>/dev/null; then
+      TEST_DIFF=$(python3 "$COMPARE_PY" --ltp-old "$OLD_RUNTEST_DIR" --ltp-new "$NEW_PATH" 2>/dev/null || true)
+    fi
+    rm -rf "$OLD_RUNTEST_DIR"
+  fi
+fi
+
+# Preserve existing footers from current commit message
+ORIG_MSG=$(git log -1 --format=%B 2>/dev/null || true)
+BUG_LINE=$(echo "$ORIG_MSG" | grep -E '^Bug:' | head -n1 || echo "Bug: None")
+TEST_LINE=$(echo "$ORIG_MSG" | grep -E '^Test:' | head -n1 || echo "Test: TreeHugger")
+CHANGE_ID=$(echo "$ORIG_MSG" | grep -E '^Change-Id:' | head -n1 || true)
+if [ -z "$CHANGE_ID" ]; then
+  CHANGE_ID="Change-Id: I$(python3 -c 'import secrets; print(secrets.token_hex(20))')"
+fi
+SIGNED_OFF=$(echo "$ORIG_MSG" | grep -E '^Signed-off-by:' | head -n1 || true)
+if [ -z "$SIGNED_OFF" ]; then
+  USER_NAME=$(git config user.name 2>/dev/null || echo "Wake Liu")
+  USER_EMAIL=$(git config user.email 2>/dev/null || echo "wakel@google.com")
+  SIGNED_OFF="Signed-off-by: $USER_NAME <$USER_EMAIL>"
+fi
+
+# Build and amend the commit message
+NEW_COMMIT_FILE=$(mktemp)
+cat <<EOF > "$NEW_COMMIT_FILE"
+$TITLE
+
+This update was generated automatically by external_updater.
+$TYPE_DESC
+EOF
+
+if [ -n "$TEST_DIFF" ]; then
+  echo "" >> "$NEW_COMMIT_FILE"
+  echo "$TEST_DIFF" >> "$NEW_COMMIT_FILE"
+fi
+
+echo "" >> "$NEW_COMMIT_FILE"
+echo "$BUG_LINE" >> "$NEW_COMMIT_FILE"
+echo "$TEST_LINE" >> "$NEW_COMMIT_FILE"
+echo "$CHANGE_ID" >> "$NEW_COMMIT_FILE"
+echo "$SIGNED_OFF" >> "$NEW_COMMIT_FILE"
+
+git commit --amend -F "$NEW_COMMIT_FILE" || {
+  echo "Warning: Failed to amend commit message."
+}
+rm -f "$NEW_COMMIT_FILE"
+
