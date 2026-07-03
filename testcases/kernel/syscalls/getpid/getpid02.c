@@ -6,11 +6,11 @@
 /*\
  * Check that:
  *
- * - fork() in parent returns the same pid as getpid() in child
- * - getppid() in child returns the same pid as getpid() in parent
+ * - :manpage:`fork(2)` in parent returns the same pid as
+ *   :manpage:`getpid(2)` in child
+ * - :manpage:`getppid(2)` in child returns the same pid as
+ *   :manpage:`getpid(2)` in parent
  */
-
-#include <errno.h>
 
 #include "tst_test.h"
 
@@ -51,7 +51,7 @@ static void verify_getpid(void)
 static void setup(void)
 {
 	child_pid = SAFE_MMAP(NULL, sizeof(pid_t), PROT_READ | PROT_WRITE,
-                              MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+			      MAP_ANONYMOUS | MAP_SHARED, -1, 0);
 }
 
 static void cleanup(void)

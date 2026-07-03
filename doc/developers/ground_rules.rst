@@ -22,16 +22,16 @@ The first problem is that it will likely introduce very rare test failures,
 that means somebody has to spend time looking into these, which is a wasted
 effort. Nobody likes tests that will fail rarely for no good reason. Even more
 so you cannot run such tests with a background load to ensure that everything
-works correctly on a busy system, because that will increase the likehood of a
+works correctly on a busy system, because that will increase the likelihood of a
 failure.
 
 The second problem is that this wastes resources and slows down a test run. If
-you think that adding a sleep to a test is not a big deal, lets have a look at
+you think that adding a sleep to a test is not a big deal, let's have a look at
 the bigger perspective. There are about 1600 syscall tests in Linux Test
 Project, if 7.5% of them would sleep just for one second, we would end up with
 two minutes of wasted time per testrun. In practice most of the tests, that
 historically misused sleep for synchronization, waited for much longer just to
-be sure that things will works even on slower hardware. With sleeps between 2
+be sure that things will work even on slower hardware. With sleeps between 2
 and 5 seconds that puts us somewhere between 4 and 10 minutes which is between
 13% and 33% of the syscall runtime on an outdated thinkpad, where the run
 finishes in a bit less than half an hour. It's even worse on newer hardware,
@@ -100,10 +100,10 @@ paths too.
 The test library can simplify cleanup greatly as there are various helpers such as:
 
 - :c:type:`.needs_tmpdir = 1 <tst_test>` that creates and deletes a temporary directory for the test
-- :c:type:`.save_restore = 1 <tst_test>` that saves and restores /sys/ and /proc/ files
+- :c:type:`.save_restore <tst_test>` that saves and restores /sys/ and /proc/ files
 - :c:type:`.needs_device = 1 <tst_test>` sets up and tears down a block device for the test
 - :c:type:`.restore_wallclock = 1 <tst_test>` that restores wall clock after the test
-- :c:type:`.needs_cgroup_ctrls = 1 <tst_test>` sets up and cleans up cgroups for the test
+- :c:type:`.needs_cgroup_ctrls <tst_test>` sets up and cleans up cgroups for the test
 - And many more.
 
 
@@ -115,7 +115,7 @@ Avoid nonstandard libc APIs when a portable equivalent exists; don't assume
 
 If the test is specific to a certain architecture, make sure that it at least
 compiles at the rest of architectures and set the
-:c:type:`.supported_archs = const char *const []){"s390x", ..., NULL} <tst_test>`.
+:c:type:`.supported_archs = (const char *const []){"s390x", ..., NULL} <tst_test>`.
 
 This also applies to shell code where it's easy to use bash features that are
 not available on other shell implementations, e.g. dash or busybox. Make sure
@@ -125,7 +125,7 @@ You can check for common mistakes, not only in portability, with our
 ``make check`` tooling.
 
 
-Split changed into well defined chunks
+Split changes into well defined chunks
 --------------------------------------
 
 When submitting patches make sure to split the work into small well-defined
@@ -162,7 +162,7 @@ Kernel features and RCs
 -----------------------
 
 LTP tests or fixes for kernel changes that have not yet been released may be
-posted to the LTP list for a review but they will not be be accepted until
+posted to the LTP list for a review but they will not be accepted until
 respective kernel changes are released. Review of such changes is also
 considered to be lower priority than rest of the changes. This is because
 kernel changes especially in the early RC phase are volatile and could be

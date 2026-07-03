@@ -19,7 +19,7 @@ enum tst_cmd_flags {
 	TST_CMD_TCONF_ON_MISSING = 2,
 };
 
-/**
+/*
  * struct tst_cmd - Provides details about a command struct needed by LTP test.
  * @cmd: The name of the command.
  * @optional: A flag indicating if the command is optional.
@@ -111,7 +111,7 @@ static inline int tst_cmd(void (cleanup_fn)(void),
 #endif
 
 /**
- * tst_system() - Wrapper function for :manpage:`system(3)`, ignorcing ``SIGCHLD``
+ * tst_system() - Wrapper function for :manpage:`system(3)`, ignoring ``SIGCHLD``
  * signal.
  *
  * @command: The command to be run.

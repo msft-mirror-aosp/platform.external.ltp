@@ -4,7 +4,8 @@
  */
 
 /*\
- * Verify that getpid() system call returns process ID in range <2, PID_MAX>.
+ * Verify that :manpage:`getpid(2)` system call returns process ID in range
+ * <2, PID_MAX>.
  */
 
 #include <stdlib.h>
@@ -14,7 +15,7 @@ static pid_t pid_max;
 
 static void setup(void)
 {
-	SAFE_FILE_SCANF("/proc/sys/kernel/pid_max", "%d\n", &pid_max);
+	SAFE_FILE_SCANF(PATH_KERN_PID_MAX, "%d\n", &pid_max);
 }
 
 static void verify_getpid(void)

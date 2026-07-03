@@ -115,9 +115,13 @@ static struct tst_test test = {
 		"ppc",
 		NULL
 	},
+	.needs_kconfigs = (const char *const[]){
+		"CONFIG_NUMA=y",
+		NULL
+	},
 	.tags = (const struct tst_tag[]) {
 		{"linux-git", "cf01fb9985e8"},
-		{"CVE", "CVE-2017-7616"},
+		{"CVE", "2017-7616"},
 		{}
 	}
 };

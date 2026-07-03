@@ -3,7 +3,7 @@
 Tests setup
 ===========
 
-The internal LTP library provides a set of features that permits to customize
+The internal LTP library provides a set of features that lets you customize
 tests behavior by setting environment variables and using specific tests
 arguments.
 
@@ -71,7 +71,7 @@ users.
 
    * - LTP_USR_UID, LTP_USR_GID
      - Set UID and GID of ``nobody`` user for :doc:`../developers/api_shell_tests`,
-       see :master:`testcases/lib/tst_runas.c`.
+       see :shell_lib:`tst_runas.c`.
 
    * - LTP_VIRT_OVERRIDE
      - Overrides virtual machine detection in the test library. Setting it to

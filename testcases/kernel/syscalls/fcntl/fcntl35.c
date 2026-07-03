@@ -57,13 +57,11 @@ static void setup(void)
 	 */
 	test_max_priv = kernel_page_size() * PIPE_DEF_BUFFERS;
 
-	if (!access("/proc/sys/fs/pipe-max-size", F_OK)) {
-		SAFE_FILE_SCANF("/proc/sys/fs/pipe-max-size", "%d",
-				&pipe_max_unpriv);
-		SAFE_FILE_PRINTF("/proc/sys/fs/pipe-max-size", "%d",
-				test_max_unpriv);
+	if (!access(PATH_FS_PIPE_MAX_SIZE, F_OK)) {
+		SAFE_FILE_SCANF(PATH_FS_PIPE_MAX_SIZE, "%d", &pipe_max_unpriv);
+		SAFE_FILE_PRINTF(PATH_FS_PIPE_MAX_SIZE, "%d", test_max_unpriv);
 	} else {
-		tst_brk(TCONF, "/proc/sys/fs/pipe-max-size doesn't exist");
+		tst_brk(TCONF, "%s doesn't exist", PATH_FS_PIPE_MAX_SIZE);
 	}
 
 	pw = SAFE_GETPWNAM("nobody");
@@ -71,7 +69,7 @@ static void setup(void)
 
 static void cleanup(void)
 {
-	SAFE_FILE_PRINTF("/proc/sys/fs/pipe-max-size", "%d", pipe_max_unpriv);
+	SAFE_FILE_PRINTF(PATH_FS_PIPE_MAX_SIZE, "%d", pipe_max_unpriv);
 }
 
 static int verify_pipe_size(int exp_pip_sz, char *desp)
