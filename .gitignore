@@ -64,3 +64,6 @@ compile_commands.json
 
 # added by scripts/checkpatch.pl
 .checkpatch-camelcase.*
+
+# Android automation dumps
+/android/tools/dump/
