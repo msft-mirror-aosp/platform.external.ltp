@@ -20,6 +20,5 @@ third_party {
     type: "Git"
     value: "https://github.com/linux-test-project/ltp/"
     version: "3a64d78f58bdceba93ed321e91215fb969a047ed"
-    closest_version: "20260529"
   }
 }
