@@ -70,7 +70,7 @@
 #define HAVE_EPOLL_PWAIT2 1
 
 /* Define to 1 if you have the `execveat' function. */
-/* #undef HAVE_EXECVEAT */
+#define HAVE_EXECVEAT 1
 
 /* Define to 1 if you have the `fallocate' function. */
 #define HAVE_FALLOCATE 1
