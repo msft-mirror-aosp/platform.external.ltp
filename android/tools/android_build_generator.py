@@ -571,10 +571,36 @@ class BuildGenerator(object):
         bp_result = []
         bp_result.append('')
         bp_result.append('LTP_TESTS = [')
-        bp_result.append('    ":ltp_runtests",')
         for package in sorted(self._packages):
             bp_result.append('    ":%s",' % package)
         bp_result.append(']')
+
+        bp_result.append('')
+        bp_result.append('cc_genrule {')
+        bp_result.append('    name: "ltp_testcases.zip",')
+        bp_result.append('    tools: ["soong_zip"],')
+        bp_result.append('    srcs: LTP_TESTS,')
+        bp_result.append('    compile_multilib: "both",')
+        bp_result.append('    arch: {')
+        bp_result.append('        arm: {')
+        bp_result.append('            out: ["ltp_testcases_arm.zip"],')
+        bp_result.append('        },')
+        bp_result.append('        arm64: {')
+        bp_result.append('            out: ["ltp_testcases_arm64.zip"],')
+        bp_result.append('        },')
+        bp_result.append('        x86: {')
+        bp_result.append('            out: ["ltp_testcases_x86.zip"],')
+        bp_result.append('        },')
+        bp_result.append('        x86_64: {')
+        bp_result.append('            out: ["ltp_testcases_x86_64.zip"],')
+        bp_result.append('        },')
+        bp_result.append('        riscv64: {')
+        bp_result.append('            out: ["ltp_testcases_riscv64.zip"],')
+        bp_result.append('        },')
+        bp_result.append('    },')
+        bp_result.append('    cmd: "echo \\"$(in)\\" | tr \' \' \'\\\\n\' > $(genDir)/list && $(location soong_zip) -o $(out) -j -l $(genDir)/list",')
+        bp_result.append('}')
+
         return bp_result
 
     def BuildLTPTestSuite(self, arch, bitness, targets, extra_test_configs=None):
@@ -612,7 +638,7 @@ class BuildGenerator(object):
                 bp_result.append('        ":ltp_config_%s",' % arch_string)
             bp_result.append('    ],')
 
-        bp_result.append('    data: LTP_TESTS,')
+        bp_result.append('    data: [":ltp_testcases.zip"],')
         bp_result.append('}')
         return bp_result
 
