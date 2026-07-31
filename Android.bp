@@ -136,6 +136,7 @@ cc_defaults {
         "-Wno-uninitialized",
         "-Wno-user-defined-warnings",
         // Silence noisy warnings
+        "-Wno-alloc-size",
         "-Wno-constant-conversion",
         "-Wno-deprecated",
         "-Wno-duplicate-decl-specifier",
@@ -158,11 +159,7 @@ cc_defaults {
         "-Wno-unused-function",
         "-Wno-unused-parameter",
         "-Wno-unused-variable",
-    ] + select(release_flag("RELEASE_BUILD_CLANG_VERSION"), {
-        // Suppress locally to unblock r596125 update
-        "clang-r596125": ["-Wno-alloc-size"],
-        default: [],
-    }),
+    ],
 
     local_include_dirs: [
         "android/include",
