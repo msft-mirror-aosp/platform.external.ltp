@@ -40,7 +40,6 @@ static int test_utils[NUM_TESTS];
 #define SLEEP_USEC 19000
 /* Run each test for one second. */
 #define TEST_LENGTH_USEC USEC_PER_SEC
-
 static void do_work(void)
 {
 	struct timespec ts;
@@ -52,7 +51,7 @@ static void do_work(void)
 		return;
 	}
 	now_usec = ts.tv_sec * USEC_PER_SEC + ts.tv_nsec / 1000;
-	end_usec = now_usec + TEST_LENGTH_USEC/2;
+	end_usec = now_usec + TEST_LENGTH_USEC;
 
 	while (now_usec < end_usec) {
 		burn(BUSY_USEC, 0);
@@ -75,10 +74,6 @@ static void *test_fn(void *arg LTP_ATTRIBUTE_UNUSED)
 	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/tasks", "%d", task_pid);
 	while(tests_done < NUM_TESTS) {
 		sem_wait(&test_sem);
-		// give time for utilization to track real task usage
-		do_work();
-		// start measuring
-		SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
 		do_work();
 		sem_post(&result_sem);
 		tests_done++;
@@ -111,6 +106,7 @@ static void run_test(void)
 	SAFE_FILE_PRINTF(STUNE_TEST_PATH "/schedtune.boost",
 			 "%d", test_boost[test_index]);
 	SAFE_FILE_PRINTF(TRACING_DIR "trace", "\n");
+	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "1");
 	sem_post(&test_sem);
 	sem_wait(&result_sem);
 	SAFE_FILE_PRINTF(TRACING_DIR "tracing_on", "0");
