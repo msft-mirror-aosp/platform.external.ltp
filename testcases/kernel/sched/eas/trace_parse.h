@@ -78,7 +78,6 @@ struct trace_record {
 	unsigned short flags;
 	unsigned char irq_context;
 	unsigned short preempt_depth;
-	unsigned short migrate_disable;
 
 	struct trace_timestamp ts;
 
