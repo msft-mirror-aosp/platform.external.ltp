@@ -33,7 +33,7 @@ cd $TOOLS_DIR
 case $1 in
   -u|--update)
     echo "Update option enabled. Regenerating..."
-    rm -rf *.dump
+    rm -rf dump/*.dump
     ;;
   -h|--help)
     echo "Generate Android.ltp.mk / gen.bp."
