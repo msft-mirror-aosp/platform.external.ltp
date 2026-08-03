@@ -63,6 +63,12 @@
 /* Define to 1 if the system has the type `enum kcmp_type'. */
 #define HAVE_ENUM_KCMP_TYPE 1
 
+/* Define to 1 if you have the `enum pedit_header_type' definition. */
+#define HAVE_ENUM_PEDIT_HEADER_TYPE 1
+
+/* Define to 1 if you have the `enum pedit_cmd' definition. */
+#define HAVE_ENUM_PEDIT_CMD 1
+
 /* Define to 1 if you have the `epoll_pwait' function. */
 #define HAVE_EPOLL_PWAIT 1
 
