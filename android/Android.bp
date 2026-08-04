@@ -19,7 +19,6 @@ package {
 }
 
 LTP_TESTS = [
-    ":ltp_runtests",
     ":ltp_abort01",
     ":ltp_abs01",
     ":ltp_accept01",
@@ -2469,6 +2468,31 @@ LTP_TESTS = [
     ":ltp_zram03",
 ]
 
+cc_genrule {
+    name: "ltp_testcases.zip",
+    tools: ["soong_zip"],
+    srcs: LTP_TESTS,
+    compile_multilib: "both",
+    arch: {
+        arm: {
+            out: ["ltp_testcases_arm.zip"],
+        },
+        arm64: {
+            out: ["ltp_testcases_arm64.zip"],
+        },
+        x86: {
+            out: ["ltp_testcases_x86.zip"],
+        },
+        x86_64: {
+            out: ["ltp_testcases_x86_64.zip"],
+        },
+        riscv64: {
+            out: ["ltp_testcases_riscv64.zip"],
+        },
+    },
+    cmd: "echo \"$(in)\" | tr ' ' '\\n' > $(genDir)/list && $(location soong_zip) -o $(out) -j -l $(genDir)/list",
+}
+
 genrule {
     name: "ltp_config_arm_64",
     out: ["vts_ltp_test_arm_64.xml"],
@@ -2551,7 +2575,7 @@ sh_test {
         ":ltp_config_arm_64_hwasan",
         ":ltp_config_arm_64_lowmem_hwasan",
     ],
-    data: LTP_TESTS,
+    data: [":ltp_testcases.zip"],
 }
 
 sh_test {
@@ -2575,7 +2599,7 @@ sh_test {
     extra_test_configs: [
         ":ltp_config_arm_lowmem",
     ],
-    data: LTP_TESTS,
+    data: [":ltp_testcases.zip"],
 }
 
 sh_test {
@@ -2592,7 +2616,7 @@ sh_test {
             enabled: true,
         },
     },
-    data: LTP_TESTS,
+    data: [":ltp_testcases.zip"],
 }
 
 sh_test {
@@ -2609,7 +2633,7 @@ sh_test {
             enabled: true,
         },
     },
-    data: LTP_TESTS,
+    data: [":ltp_testcases.zip"],
 }
 
 sh_test {
@@ -2630,5 +2654,5 @@ sh_test {
             enabled: true,
         },
     },
-    data: LTP_TESTS,
+    data: [":ltp_testcases.zip"],
 }
