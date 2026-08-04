@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Copyright (c) International Business Machines  Corp., 2001
+# Copyright (c) 2026 IBM
 
 top_srcdir		?= ../../../..
 

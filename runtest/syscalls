@@ -177,14 +177,19 @@ dup3_02 dup3_02
 
 epoll_create01 epoll_create01
 epoll_create02 epoll_create02
+epoll_create03 epoll_create03
+
 epoll_create1_01 epoll_create1_01
 epoll_create1_02 epoll_create1_02
-epoll01 epoll-ltp
+
 epoll_ctl01 epoll_ctl01
 epoll_ctl02 epoll_ctl02
 epoll_ctl03 epoll_ctl03
 epoll_ctl04 epoll_ctl04
 epoll_ctl05 epoll_ctl05
+epoll_ctl06 epoll_ctl06
+epoll_ctl07 epoll_ctl07
+
 epoll_wait01 epoll_wait01
 epoll_wait02 epoll_wait02
 epoll_wait03 epoll_wait03
@@ -192,6 +197,16 @@ epoll_wait04 epoll_wait04
 epoll_wait05 epoll_wait05
 epoll_wait06 epoll_wait06
 epoll_wait07 epoll_wait07
+epoll_wait08 epoll_wait08
+epoll_wait09 epoll_wait09
+epoll_wait10 epoll_wait10
+epoll_wait11 epoll_wait11
+epoll_wait12 epoll_wait12
+epoll_wait13 epoll_wait13
+epoll_wait14 epoll_wait14
+epoll_wait15 epoll_wait15
+epoll_wait16 epoll_wait16
+
 epoll_pwait01 epoll_pwait01
 epoll_pwait02 epoll_pwait02
 epoll_pwait03 epoll_pwait03
@@ -1514,6 +1529,7 @@ setsockopt07 setsockopt07
 setsockopt08 setsockopt08
 setsockopt09 setsockopt09
 setsockopt10 setsockopt10
+setsockopt11 setsockopt11
 
 settimeofday01 settimeofday01
 settimeofday02 settimeofday02
@@ -1678,6 +1694,7 @@ sync_file_range01 sync_file_range01
 sync_file_range02 sync_file_range02
 
 syscall01 syscall01
+syscall02 syscall02
 
 sysconf01 sysconf01
 
@@ -1864,6 +1881,7 @@ perf_event_open02 perf_event_open02
 
 futex_cmp_requeue01 futex_cmp_requeue01
 futex_cmp_requeue02 futex_cmp_requeue02
+futex_cmp_requeue03 futex_cmp_requeue03
 futex_wait01 futex_wait01
 futex_wait02 futex_wait02
 futex_wait03 futex_wait03
@@ -1878,6 +1896,7 @@ futex_wake01 futex_wake01
 futex_wake02 futex_wake02
 futex_wake03 futex_wake03
 futex_wake04 futex_wake04
+futex_wake05 futex_wake05
 futex_wait_bitset01 futex_wait_bitset01
 
 memfd_create01 memfd_create01

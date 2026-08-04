@@ -15,7 +15,7 @@
  * - monitor file with cachestat()
  * - check if the right amount of pages have been moved into cache
  * - if storage device synchronization is requested, check that dirty pages is
- *    zero
+ *   zero
  */
 
 #include <stdlib.h>
@@ -36,15 +36,13 @@ static void test_cached_pages(const unsigned int use_sync, const int num_pages)
 	tst_res(TINFO, "%s file synchronization", use_sync ? "Enable" : "Disable");
 	tst_res(TINFO, "Number of pages: %d", num_pages);
 
-	memset(cs, 0, sizeof(struct cachestat));
-
 	fd = SAFE_OPEN(FILENAME, O_RDWR | O_CREAT, 0600);
 
 	for (int i = 0; i < num_pages; i++)
 		SAFE_WRITE(0, fd, page_data, page_size);
 
 	if (use_sync)
-		fsync(fd);
+		SAFE_FSYNC(fd);
 
 	cs_range->off = 0;
 	cs_range->len = page_size * num_pages;
@@ -74,8 +72,8 @@ static void setup(void)
 	page_size = (int)sysconf(_SC_PAGESIZE);
 
 	for (num_shift = 0; num_shift <= 15; num_shift++) {
-		if ((1lu<<num_shift) * page_size / 1024 >= tst_device->size) {
-			tst_res(TINFO, "Limiting num_shift to %i\n", num_shift);
+		if ((1lu << num_shift) * page_size / 1024 >= tst_device->size) {
+			tst_res(TINFO, "Limiting num_shift to %i", num_shift);
 			break;
 		}
 	}

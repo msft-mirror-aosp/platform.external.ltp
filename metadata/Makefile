@@ -15,7 +15,7 @@ INSTALL_DIR		= metadata
 ltp.json: metaparse metaparse-sh
 	$(abs_srcdir)/parse.sh > ltp.json
 
-test:
-	$(MAKE) -C $(abs_srcdir)/tests/ test
+test: metaparse metaparse-sh
+	METAPARSEDIR=$$METAPARSEDIR $(MAKE) -C tests/ test
 
 include $(top_srcdir)/include/mk/generic_leaf_target.mk
