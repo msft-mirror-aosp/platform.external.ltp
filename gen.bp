@@ -2780,84 +2780,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_eas_big_to_small",
-    stem: "eas_big_to_small",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/eas_big_to_small.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_eas_one_big_task",
-    stem: "eas_one_big_task",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/eas_one_big_task.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_eas_one_small_task",
-    stem: "eas_one_small_task",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/eas_one_small_task.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_eas_small_big_toggle",
-    stem: "eas_small_big_toggle",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/eas_small_big_toggle.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_eas_small_to_big",
-    stem: "eas_small_to_big",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/eas_small_to_big.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_eas_two_big_three_small",
-    stem: "eas_two_big_three_small",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/eas_two_big_three_small.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
     name: "ltp_endian_switch01",
     stem: "endian_switch01",
     defaults: ["ltp_test_defaults"],
@@ -15237,45 +15159,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_sched_boost",
-    stem: "sched_boost",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sched_boost.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_sched_cfs_prio",
-    stem: "sched_cfs_prio",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sched_cfs_prio.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_sched_dl_runtime",
-    stem: "sched_dl_runtime",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sched_dl_runtime.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
     name: "ltp_sched_driver",
     stem: "sched_driver",
     defaults: ["ltp_test_defaults"],
@@ -15426,58 +15309,6 @@ cc_test {
         "testcases/realtime/include",
     ],
     static_libs: ["libltp_realtime"],
-}
-
-cc_test {
-    name: "ltp_sched_latency_dl",
-    stem: "sched_latency_dl",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sched_latency_dl.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_sched_latency_rt",
-    stem: "sched_latency_rt",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sched_latency_rt.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_sched_prio_3_fifo",
-    stem: "sched_prio_3_fifo",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sched_prio_3_fifo.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_sched_prio_3_rr",
-    stem: "sched_prio_3_rr",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sched_prio_3_rr.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
 }
 
 cc_test {
@@ -18537,45 +18368,6 @@ cc_test {
     stem: "string01",
     defaults: ["ltp_test_defaults"],
     srcs: ["testcases/kernel/syscalls/string/string01.c"],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_sugov_latency",
-    stem: "sugov_latency",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sugov_latency.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_sugov_stale_util",
-    stem: "sugov_stale_util",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sugov_stale_util.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
-    name: "ltp_sugov_wakeups",
-    stem: "sugov_wakeups",
-    defaults: ["ltp_test_defaults"],
-    srcs: [
-        "testcases/kernel/sched/eas/sugov_wakeups.c",
-        "testcases/kernel/sched/eas/trace_parse.c",
-        "testcases/kernel/sched/eas/util.c",
-    ],
     local_include_dirs: ["include/old"],
     static_libs: ["libltp_ltp"],
 }
