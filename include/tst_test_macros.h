@@ -8,6 +8,12 @@
  * DOC: tst_test_macros.h -- helpers for testing syscalls
  */
 
+/*
+ * NOTE: for all TST_EXP_*() macros SCALL in first macro needs to be stringified
+ * otherwise constants in syscalls will be evaluated (e.g. O_RDONLY becomes 0).
+ * That is the reason for underscore variants (e.g. TST_EXP_FAIL_()).
+ */
+
 #ifndef TST_TEST_MACROS_H__
 #define TST_TEST_MACROS_H__
 
@@ -149,13 +155,16 @@ extern int TST_PASS;
  * This is a variant of the TST_EXP_POSITIVE() for a more specific case that
  * the returned value is a file descriptor.
  */
-#define TST_EXP_FD(SCALL, ...)                                                 \
+#define TST_EXP_FD(SCALL, ...)                                  \
+	TST_EXP_FD_(SCALL, #SCALL, ##__VA_ARGS__)
+
+#define TST_EXP_FD_(SCALL, SSCALL, ...)                                     \
 	({                                                                     \
-		TST_EXP_POSITIVE__(SCALL, #SCALL, ##__VA_ARGS__);              \
+		TST_EXP_POSITIVE__(SCALL, SSCALL, ##__VA_ARGS__);              \
 		                                                               \
 		if (TST_PASS)                                                  \
 			TST_MSGP_(TPASS, " returned fd %ld", TST_RET,          \
-				#SCALL, ##__VA_ARGS__);                        \
+				SSCALL, ##__VA_ARGS__);                        \
 		                                                               \
 		TST_RET;                                                       \
 	})
@@ -168,17 +177,17 @@ extern int TST_PASS;
  * @ERRNO: Expected errno or 0.
  * @...: A printf-like parameters.
  *
- * Expect a file descriptor if errno is 0 otherwise expect a failure with
+ * Expect a file descriptor if ERRNO is 0 otherwise expect a failure with
  * expected errno.
  *
  * Internally it uses TST_EXP_FAIL() and TST_EXP_FD().
  */
 #define TST_EXP_FD_OR_FAIL(SCALL, ERRNO, ...)                                  \
-	({                                                                     \
+	({                                                                 \
 		if (ERRNO)                                                     \
-			TST_EXP_FAIL(SCALL, ERRNO, ##__VA_ARGS__);             \
+			TST_EXP_FAIL_(SCALL, #SCALL, ERRNO, ##__VA_ARGS__);    \
 		else                                                           \
-			TST_EXP_FD(SCALL, ##__VA_ARGS__);                      \
+			TST_EXP_FD_(SCALL, #SCALL, ##__VA_ARGS__);             \
 		                                                               \
 		TST_RET;                                                       \
 	})
@@ -338,11 +347,14 @@ extern int TST_PASS;
  * is converted to a string and used instead.
  */
 #define TST_EXP_PASS(SCALL, ...)                                               \
+	TST_EXP_PASS_(SCALL, #SCALL, ##__VA_ARGS__)
+
+#define TST_EXP_PASS_(SCALL, SSCALL, ...)                                      \
 	do {                                                                   \
-		TST_EXP_PASS_SILENT_(SCALL, #SCALL, ##__VA_ARGS__);            \
+		TST_EXP_PASS_SILENT_(SCALL, SSCALL, ##__VA_ARGS__);            \
 		                                                               \
 		if (TST_PASS)                                                  \
-			TST_MSG_(TPASS, " passed", #SCALL, ##__VA_ARGS__);     \
+			TST_MSG_(TPASS, " passed", SSCALL, ##__VA_ARGS__);     \
 	} while (0)                                                            \
 
 #define TST_EXP_PASS_PTR_(SCALL, SSCALL, FAIL_PTR_VAL, ...)                    \
@@ -351,8 +363,31 @@ extern int TST_PASS;
 					FAIL_PTR_VAL, ##__VA_ARGS__);          \
 		                                                               \
 		if (TST_PASS)                                                  \
-			TST_MSG_(TPASS, " passed", #SCALL, ##__VA_ARGS__);     \
+			TST_MSG_(TPASS, " passed", SSCALL, ##__VA_ARGS__);     \
 	} while (0)
+
+/**
+ * TST_EXP_PASS_OR_FAIL() - Test syscall and expect it to pass or fail with
+ * expected errno.
+ *
+ * @SCALL: Tested syscall.
+ * @ERRNO: Expected errno or 0.
+ * @...: A printf-like parameters.
+ *
+ * Expect to pass if ERRNO is 0 otherwise expect a failure with
+ * expected errno.
+ *
+ * Internally it uses TST_EXP_FAIL() and TST_EXP_PASS().
+ */
+#define TST_EXP_PASS_OR_FAIL(SCALL, ERRNO, ...)                               \
+	({                                                                     \
+		if (ERRNO)                                                     \
+			TST_EXP_FAIL_(SCALL, #SCALL, ERRNO, ##__VA_ARGS__);    \
+		else                                                           \
+			TST_EXP_PASS_(SCALL, #SCALL, ##__VA_ARGS__);           \
+		                                                               \
+		TST_RET;                                                       \
+	})
 
 /**
  * TST_EXP_PASS_PTR_VOID() - Test syscall to return a valid pointer.
@@ -488,10 +523,13 @@ const char *tst_errno_names(char *buf, const int *exp_errs, int exp_errs_cnt);
  * printed by the pass or fail tst_res() calls. If omitted the first parameter
  * is converted to a string and used instead.
  */
-#define TST_EXP_FAIL(SCALL, EXP_ERR, ...)                                      \
+#define TST_EXP_FAIL(SCALL, EXP_ERR, ...) \
+	TST_EXP_FAIL_(SCALL, #SCALL, EXP_ERR, ##__VA_ARGS__)
+
+#define TST_EXP_FAIL_(SCALL, SSCALL, EXP_ERR, ...) \
 	do {                                                                   \
 		int tst_exp_err__ = EXP_ERR;                                   \
-		TST_EXP_FAIL_ARR_(SCALL, #SCALL, &tst_exp_err__, 1,            \
+		TST_EXP_FAIL_ARR_(SCALL, SSCALL, &tst_exp_err__, 1,            \
                                   ##__VA_ARGS__);                              \
 	} while (0)
 

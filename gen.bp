@@ -1805,6 +1805,15 @@ cc_test {
 }
 
 cc_test {
+    name: "ltp_connect03",
+    stem: "connect03",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/kernel/syscalls/connect/connect03.c"],
+    local_include_dirs: ["include/old"],
+    static_libs: ["libltp_ltp"],
+}
+
+cc_test {
     name: "ltp_copy_file_range01",
     stem: "copy_file_range01",
     defaults: ["ltp_test_defaults"],
@@ -7253,15 +7262,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_getpid02",
-    stem: "getpid02",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["testcases/kernel/syscalls/getpid/getpid02.c"],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
     name: "ltp_getppid01",
     stem: "getppid01",
     defaults: ["ltp_test_defaults"],
@@ -8353,6 +8353,66 @@ cc_test {
     stem: "hugemmap35",
     defaults: ["ltp_test_defaults"],
     srcs: ["testcases/kernel/mem/hugetlb/hugemmap/hugemmap35.c"],
+    local_include_dirs: [
+        "include/old",
+        "testcases/kernel/mem/hugetlb/lib",
+    ],
+    static_libs: [
+        "libltp_hugetlb",
+        "libltp_ltp",
+    ],
+}
+
+cc_test {
+    name: "ltp_hugemmap36",
+    stem: "hugemmap36",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/kernel/mem/hugetlb/hugemmap/hugemmap36.c"],
+    local_include_dirs: [
+        "include/old",
+        "testcases/kernel/mem/hugetlb/lib",
+    ],
+    static_libs: [
+        "libltp_hugetlb",
+        "libltp_ltp",
+    ],
+}
+
+cc_test {
+    name: "ltp_hugemmap37",
+    stem: "hugemmap37",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/kernel/mem/hugetlb/hugemmap/hugemmap37.c"],
+    local_include_dirs: [
+        "include/old",
+        "testcases/kernel/mem/hugetlb/lib",
+    ],
+    static_libs: [
+        "libltp_hugetlb",
+        "libltp_ltp",
+    ],
+}
+
+cc_test {
+    name: "ltp_hugemmap38",
+    stem: "hugemmap38",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/kernel/mem/hugetlb/hugemmap/hugemmap38.c"],
+    local_include_dirs: [
+        "include/old",
+        "testcases/kernel/mem/hugetlb/lib",
+    ],
+    static_libs: [
+        "libltp_hugetlb",
+        "libltp_ltp",
+    ],
+}
+
+cc_test {
+    name: "ltp_hugemmap41",
+    stem: "hugemmap41",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/kernel/mem/hugetlb/hugemmap/hugemmap41.c"],
     local_include_dirs: [
         "include/old",
         "testcases/kernel/mem/hugetlb/lib",
@@ -11854,6 +11914,24 @@ cc_test {
 }
 
 cc_test {
+    name: "ltp_mremap08",
+    stem: "mremap08",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/kernel/syscalls/mremap/mremap08.c"],
+    local_include_dirs: ["include/old"],
+    static_libs: ["libltp_ltp"],
+}
+
+cc_test {
+    name: "ltp_mremap09",
+    stem: "mremap09",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/kernel/syscalls/mremap/mremap09.c"],
+    local_include_dirs: ["include/old"],
+    static_libs: ["libltp_ltp"],
+}
+
+cc_test {
     name: "ltp_mseal01",
     stem: "mseal01",
     defaults: ["ltp_test_defaults"],
@@ -14719,6 +14797,16 @@ cc_test {
 }
 
 cc_test {
+    name: "ltp_refluxfs",
+    stem: "refluxfs",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/cve/refluxfs.c"],
+    cflags: ["-D_GNU_SOURCE"],
+    local_include_dirs: ["include/old"],
+    static_libs: ["libltp_ltp"],
+}
+
+cc_test {
     name: "ltp_remap_file_pages02",
     stem: "remap_file_pages02",
     defaults: ["ltp_test_defaults"],
@@ -15535,6 +15623,16 @@ cc_test {
     stem: "sctp_big_chunk",
     defaults: ["ltp_test_defaults"],
     srcs: ["testcases/network/sctp/sctp_big_chunk.c"],
+    local_include_dirs: ["include/old"],
+    static_libs: ["libltp_ltp"],
+}
+
+cc_test {
+    name: "ltp_sctphantom",
+    stem: "sctphantom",
+    defaults: ["ltp_test_defaults"],
+    srcs: ["testcases/cve/sctphantom.c"],
+    cflags: ["-D_GNU_SOURCE"],
     local_include_dirs: ["include/old"],
     static_libs: ["libltp_ltp"],
 }
@@ -19041,15 +19139,6 @@ cc_test {
 }
 
 cc_test {
-    name: "ltp_test_macros04",
-    stem: "test_macros04",
-    defaults: ["ltp_test_defaults"],
-    srcs: ["lib/newlib_tests/test_macros04.c"],
-    local_include_dirs: ["include/old"],
-    static_libs: ["libltp_ltp"],
-}
-
-cc_test {
     name: "ltp_test_macros05",
     stem: "test_macros05",
     defaults: ["ltp_test_defaults"],
@@ -19701,38 +19790,6 @@ sh_test {
     src: "testcases/network/dhcp/dhcpd_tests.sh",
     sub_dir: "vts_ltp_tests/testcases/bin",
     filename: "dhcpd_tests.sh",
-    compile_multilib: "both",
-}
-
-sh_test {
-    name: "ltp_testcases_bin_dns-stress-lib.sh",
-    src: "testcases/network/stress/dns/dns-stress-lib.sh",
-    sub_dir: "vts_ltp_tests/testcases/bin",
-    filename: "dns-stress-lib.sh",
-    compile_multilib: "both",
-}
-
-sh_test {
-    name: "ltp_testcases_bin_dns-stress.sh",
-    src: "testcases/network/stress/dns/dns-stress.sh",
-    sub_dir: "vts_ltp_tests/testcases/bin",
-    filename: "dns-stress.sh",
-    compile_multilib: "both",
-}
-
-sh_test {
-    name: "ltp_testcases_bin_dns-stress01-rmt.sh",
-    src: "testcases/network/stress/dns/dns-stress01-rmt.sh",
-    sub_dir: "vts_ltp_tests/testcases/bin",
-    filename: "dns-stress01-rmt.sh",
-    compile_multilib: "both",
-}
-
-sh_test {
-    name: "ltp_testcases_bin_dns-stress02-rmt.sh",
-    src: "testcases/network/stress/dns/dns-stress02-rmt.sh",
-    sub_dir: "vts_ltp_tests/testcases/bin",
-    filename: "dns-stress02-rmt.sh",
     compile_multilib: "both",
 }
 

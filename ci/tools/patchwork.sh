@@ -7,7 +7,7 @@
 #
 # Copyright (c) 2025 Andrea Cervesato <andrea.cervesato@suse.com>
 
-PATCHWORK_URL="${PATCHWORK_URL:-https://patchwork.ozlabs.org}"
+PATCHWORK_URL="${PATCHWORK_URL:-https://patchwork.kernel.org}"
 PATCHWORK_SINCE="${PATCHWORK_SINCE:-3600}"
 PATCHWORK_MAX_SINCE="${PATCHWORK_MAX_SINCE:-86400}"
 PATCHWORK_CI_PREFIX="${PATCHWORK_CI_PREFIX:-github-build}"
@@ -41,7 +41,7 @@ fetch_series() {
                 since_time=$(expr $current_time - $PATCHWORK_SINCE)
         fi
 
-        date=$(date -u -d @$since_time +"%Y-%m-%dT%H:%M:%SZ")
+        date=$(date -u -d @$since_time +"%Y-%m-%dT%H:%M:%S")
         local stdout
 
         stdout=$(curl -k -G "$PATCHWORK_URL/api/events/" \

@@ -1,7 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 /*
+ * Copyright (c) Linux Test Project, 2002-2026
  * Copyright (c) International Business Machines  Corp., 2001
+ */
+
+/*\
+ * Test :manpage:`bind(2)` fails with -1 return value and sets errno to:
+ *
+ * - EINVAL on invalid salen
+ * - ENOTSOCK on invalid socket
+ * - no errno on valid socket call
+ * - EAFNOSUPPORT on UNIX-domain of current directory
+ * - EADDRNOTAVAIL on non-local address
+ * - EBADF when sockfd is not a valid file descriptor
+ * - ENOTDIR on a component of addr prefix is not a directory
  */
 
 #include <stdio.h>
@@ -56,12 +69,9 @@ static void verify_bind(unsigned int nr)
 {
 	struct test_case *tcase = &tcases[nr];
 
-	if (tcase->experrno) {
-		TST_EXP_FAIL(bind(*tcase->socket_fd, tcase->sockaddr, tcase->salen),
-				tcase->experrno, "%s", tcase->desc);
-	} else {
-		TST_EXP_PASS(bind(*tcase->socket_fd, tcase->sockaddr, tcase->salen),
-				"%s", tcase->desc);
+	TST_EXP_PASS_OR_FAIL(bind(*tcase->socket_fd, tcase->sockaddr, tcase->salen),
+			tcase->experrno, "%s", tcase->desc);
+	if (TST_PASS) {
 		SAFE_CLOSE(inet_socket);
 		inet_socket = SAFE_SOCKET(PF_INET, SOCK_STREAM, 0);
 	}
