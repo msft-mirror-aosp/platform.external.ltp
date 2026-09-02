@@ -142,6 +142,7 @@ confstr01 confstr01
 
 connect01 connect01
 connect02 connect02
+connect03 connect03
 
 creat01 creat01
 creat03 creat03
@@ -530,7 +531,6 @@ getpgid02 getpgid02
 getpgrp01 getpgrp01
 
 getpid01 getpid01
-getpid02 getpid02
 
 getppid01 getppid01
 getppid02 getppid02
@@ -945,6 +945,8 @@ mremap04 mremap04
 mremap05 mremap05
 mremap06 mremap06
 mremap07 mremap07
+mremap08 mremap08
+mremap09 mremap09
 
 mseal01 mseal01
 mseal02 mseal02

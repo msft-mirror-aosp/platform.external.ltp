@@ -495,7 +495,7 @@ void tst_res_(const char *file, const int lineno, int ttype,
 	 * 3. Debug output is only for test process (context->tdebug == 1).
 	 * 4. Debug output is enabled for both test and lib processes (context->tdebug == 2).
 	 */
-	if (ttype == TDEBUG) {
+	if (TTYPE_RESULT(ttype) == TDEBUG) {
 		if (!context)
 			return;
 
@@ -1301,7 +1301,8 @@ static void prepare_device(struct tst_fs *fs)
 				buf, sizeof(buf), tdev.fs_type);
 
 		SAFE_MOUNT2(get_device_name(tdev.fs_type), tst_test->mntpoint,
-				tdev.fs_type, fs->mnt_flags, mnt_data, &tdev.is_fuse);
+				tdev.fs_type, fs->mnt_flags, mnt_data,
+				&tdev.is_fuse, fs->mount_check_support);
 		context->mntpoint_mounted = 1;
 	}
 }

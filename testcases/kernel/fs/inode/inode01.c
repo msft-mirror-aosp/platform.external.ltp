@@ -68,7 +68,7 @@ static void create_tree(const struct tcase *tc, const char *parent,
 }
 
 static void record_inode(struct inode_info *inodes, unsigned int idx,
-			 const char *path, ino_t ino)
+			 const char *path, uint64_t ino)
 {
 	inodes[idx].ino = ino;
 	snprintf(inodes[idx].path, sizeof(inodes[idx].path), "%s", path);
