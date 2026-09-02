@@ -128,7 +128,7 @@ int main(int ac, char **av)
 		}
 
 		/* Check for the expected errno */
-		if (errno == EFAULT || errno == EPERM) {
+		if (errno == EFAULT) {
 			tst_resm(TPASS, "mremap() Fails, 'old region not "
 				 "mapped', errno %d", TEST_ERRNO);
 		} else {
