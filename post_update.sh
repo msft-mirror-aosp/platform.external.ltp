@@ -75,10 +75,18 @@ if [[ "$NEW_VER" =~ ^[0-9a-fA-F]{40}$ ]]; then
   CURR_DATE=$(date +%Y%m%d)
   TITLE="LTP $CURR_DATE update"
   TYPE_DESC="Upstream commit: https://github.com/linux-test-project/ltp/commit/$NEW_VER"
+  VERSION_STR="$CURR_DATE"
 else
   TITLE="LTP $NEW_VER release update"
   TYPE_DESC="Release note: https://github.com/linux-test-project/ltp/releases/tag/$NEW_VER"
+  VERSION_STR="$NEW_VER"
 fi
+
+# Automatically update VERSION file and stage it
+echo "Updating VERSION file to $VERSION_STR..."
+echo "$VERSION_STR" > "$NEW_PATH/VERSION"
+git add "$NEW_PATH/VERSION"
+
 
 # Extract test comparison diff
 TEST_DIFF=""
@@ -130,8 +138,10 @@ echo "$TEST_LINE" >> "$NEW_COMMIT_FILE"
 echo "$CHANGE_ID" >> "$NEW_COMMIT_FILE"
 echo "$SIGNED_OFF" >> "$NEW_COMMIT_FILE"
 
+# Stage updated files before amending the commit
+git add "$NEW_PATH/VERSION" "$NEW_PATH/gen.bp" "$NEW_PATH/android/include/config.h" 2>/dev/null || true
+
 git commit --amend -F "$NEW_COMMIT_FILE" || {
   echo "Warning: Failed to amend commit message."
 }
 rm -f "$NEW_COMMIT_FILE"
-
