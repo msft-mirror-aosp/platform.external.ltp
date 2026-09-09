@@ -182,12 +182,14 @@ cc_defaults {
         "ltp_version_h",
     ],
 
-    static_libs: ["libcap"],
+    static_libs: [
+        "libcap",
+        "libasyncio",
+    ],
 
     // TODO: recover libaio when the external project created
     shared_libs: [
         "libselinux",
-        "libasyncio",
     ],
 }
 
