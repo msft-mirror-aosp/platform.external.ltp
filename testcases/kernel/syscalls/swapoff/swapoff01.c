@@ -17,6 +17,8 @@
 #include "lapi/syscalls.h"
 #include "libswap.h"
 
+#define MNTPOINT "mntpoint"
+
 static void verify_swapoff(void)
 {
 	if (tst_syscall(__NR_swapon, "./swapfile01", 0) != 0) {
@@ -38,6 +40,7 @@ static void verify_swapoff(void)
 
 static void setup(void)
 {
+	SAFE_CHDIR(MNTPOINT);
 	is_swap_supported("./tstswap");
 
 	if (!tst_fs_has_free(".", 64, TST_MB))
@@ -54,6 +57,8 @@ static void setup(void)
 static struct tst_test test = {
 	.needs_root = 1,
 	.needs_tmpdir = 1,
+	.mount_device = 1,
+	.mntpoint = MNTPOINT,
 	.test_all = verify_swapoff,
 	.setup = setup
 };
