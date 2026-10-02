@@ -92,4 +92,32 @@
 #define MEMINFO_HPAGE_SURP	"HugePages_Surp:"
 #define MEMINFO_HPAGE_SIZE	"Hugepagesize:"
 
+/* SWAP */
+#define PATH_MM_SWAP				"/sys/kernel/mm/swap"
+
+/* SYS_BLOCK */
+#define PATH_SYS_BLOCK				"/sys/block"
+
+/* SYSFS CLASS */
+#define PATH_CLASS_ATA_DEVICE			"/sys/class/ata_device"
+#define PATH_CLASS_BDI				"/sys/class/bdi"
+#define PATH_CLASS_HWMON			"/sys/class/hwmon"
+#define PATH_CLASS_LEDS			"/sys/class/leds"
+#define PATH_CLASS_NET				"/sys/class/net"
+#define PATH_CLASS_RTC				"/sys/class/rtc"
+#define PATH_CLASS_THERMAL			"/sys/class/thermal"
+#define PATH_CLASS_WAKEUP			"/sys/class/wakeup"
+
+/* SYSFS DEVICES */
+#define PATH_SYS_CLOCKEVENTS			"/sys/devices/system/clockevents"
+#define PATH_SYS_CLOCKSOURCE			"/sys/devices/system/clocksource"
+#define PATH_SYS_CPU				"/sys/devices/system/cpu"
+#define PATH_SYS_CPU_SMT			"/sys/devices/system/cpu/smt"
+#define PATH_SYS_CPU_VULN			"/sys/devices/system/cpu/vulnerabilities"
+#define PATH_SYS_NODE				"/sys/devices/system/node"
+
+/* SYSFS */
+#define PATH_SYS_KERNEL				"/sys/kernel"
+#define PATH_SYS_POWER				"/sys/power"
+
 #endif /* TST_PATH_DEFS__ */

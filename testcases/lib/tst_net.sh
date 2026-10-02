@@ -690,7 +690,7 @@ tst_del_ipaddr()
 }
 
 # tst_restore_ipaddr [TYPE] [LINK]
-# Restore default ip addresses defined in network.sh
+# Restore the default ip addresses.
 # TYPE: { lhost | rhost }; Default value is 'lhost'.
 # LINK: link number starting from 0. Default value is '0'.
 tst_restore_ipaddr()
@@ -1147,8 +1147,6 @@ tst_net_detect_ipv6
 # Management Link
 [ -z "$RHOST" ] && TST_USE_NETNS="yes"
 export RHOST="$RHOST"
-# Don't use it in new tests, use tst_rhost_run() from tst_net.sh instead.
-export LTP_RSH="${LTP_RSH:-ssh -nq}"
 
 # Test Links
 # IPV{4,6}_{L,R}HOST can be set with or without prefix (e.g. IP or IP/prefix),
@@ -1179,7 +1177,6 @@ export NS_DURATION="${NS_DURATION:-10}"
 export NS_TIMES="${NS_TIMES:-10}"
 export CONNECTION_TOTAL="${CONNECTION_TOTAL:-10}"
 export IP_TOTAL="${IP_TOTAL:-100}"
-export IP_TOTAL_FOR_TCPIP="${IP_TOTAL_FOR_TCPIP:-100}"
 export ROUTE_TOTAL="${ROUTE_TOTAL:-100}"
 export MTU_CHANGE_TIMES="${MTU_CHANGE_TIMES:-100}"
 export IF_UPDOWN_TIMES="${IF_UPDOWN_TIMES:-100}"

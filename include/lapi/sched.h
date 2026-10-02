@@ -14,8 +14,8 @@
 #include "config.h"
 #include "lapi/syscalls.h"
 
-/* sched_attr is not defined in glibc < 2.41 */
 #ifndef SCHED_ATTR_SIZE_VER0
+# ifndef HAVE_STRUCT_SCHED_ATTR
 struct sched_attr {
 	uint32_t size;
 
@@ -33,20 +33,24 @@ struct sched_attr {
 	uint64_t sched_deadline;
 	uint64_t sched_period;
 };
+# endif
+# define SCHED_ATTR_SIZE_VER0 48	/* sizeof first published struct */
+#endif
 
-static inline int sched_setattr(pid_t pid, const struct sched_attr *attr,
-                                unsigned int flags)
+#ifndef HAVE_SCHED_SETATTR
+static inline int sched_setattr(pid_t pid, struct sched_attr *attr,
+				unsigned int flags)
 {
 	return syscall(__NR_sched_setattr, pid, attr, flags);
 }
+#endif
 
+#ifndef HAVE_SCHED_GETATTR
 static inline int sched_getattr(pid_t pid, struct sched_attr *attr,
-                                unsigned int size, unsigned int flags)
+				unsigned int size, unsigned int flags)
 {
 	return syscall(__NR_sched_getattr, pid, attr, size, flags);
 }
-
-# define SCHED_ATTR_SIZE_VER0 48	/* sizeof first published struct */
 #endif
 
 struct clone_args_minimal {
@@ -168,5 +172,41 @@ static inline int getcpu(unsigned *cpu, unsigned *node)
 #ifndef CLONE_INTO_CGROUP
 # define CLONE_INTO_CGROUP 0x200000000ULL
 #endif
+
+static inline int safe_sched_setattr(const char *file, const int lineno,
+				     pid_t pid, struct sched_attr *attr,
+				     unsigned int flags)
+{
+	int ret;
+
+	ret = tst_syscall(__NR_sched_setattr, pid, attr, flags);
+
+	if (ret == -1) {
+		if (attr) {
+			tst_brk_(file, lineno, TBROK | TERRNO,
+				"sched_setattr(%i, {size=%u, policy=%u}, %u) failed",
+				pid, attr->size, attr->sched_policy, flags);
+		} else {
+			tst_brk_(file, lineno, TBROK | TERRNO,
+				"sched_setattr(%i, NULL, %u) failed", pid, flags);
+		}
+	}
+
+	return ret;
+}
+
+/**
+ * SAFE_SCHED_SETATTR() - Safe wrapper for sched_setattr().
+ * @pid: Target process or thread ID (0 for caller).
+ * @attr: Pointer to a sched_attr structure.
+ * @flags: Flags modifying the scheduling behavior.
+ *
+ * Calls sched_setattr() via tst_syscall(). Reports TCONF if unavailable,
+ * otherwise breaks the test with TBROK | TERRNO on failure.
+ *
+ * Return: Zero on success.
+ */
+#define SAFE_SCHED_SETATTR(pid, attr, flags)\
+	safe_sched_setattr(__FILE__, __LINE__, (pid), (attr), (flags))
 
 #endif /* LAPI_SCHED_H__ */

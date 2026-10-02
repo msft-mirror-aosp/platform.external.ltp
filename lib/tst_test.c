@@ -64,7 +64,6 @@ const char *TCID __attribute__((weak));
 struct tst_test *tst_test;
 
 static const char *tcid;
-static int iterations = 1;
 static float duration = -1;
 static float timeout_mul = -1;
 static int reproducible_output;
@@ -834,7 +833,7 @@ static void parse_opts(int argc, char *argv[])
 			print_test_tags();
 			exit(0);
 		case 'i':
-			iterations = SAFE_STRTOL(optarg, 0, INT_MAX);
+			tst_test->iterations = SAFE_STRTOUL(optarg, 0, UINT_MAX);
 		break;
 		case 'I':
 			if (tst_test->runtime > 0)
@@ -1085,6 +1084,21 @@ static bool check_kver(const char *min_kver, const int brk_nosupp)
 	}
 
 	return true;
+}
+
+static void check_supported_kver(void)
+{
+	int v1, v2, v3;
+
+	if (tst_parse_kver(TST_MIN_KVER, &v1, &v2, &v3)) {
+		tst_res(TWARN,
+			"Invalid minimal kernel version %s, expected %%d.%%d.%%d",
+			TST_MIN_KVER);
+		return;
+	}
+
+	if (tst_kvercmp(v1, v2, v3) < 0)
+		tst_res(TWARN, "Kernel is older than minimal supported %s", TST_MIN_KVER);
 }
 
 /*
@@ -1455,6 +1469,8 @@ static void do_setup(int argc, char *argv[])
 	if (context->tdebug)
 		tst_res(TINFO, "Enabling debug info (level %d)", context->tdebug);
 
+	check_supported_kver();
+
 	if (tst_test->needs_kconfigs && tst_kconfig_check(tst_test->needs_kconfigs))
 		tst_brk(TCONF, "Aborting due to unsuitable kernel config, see above!");
 
@@ -1474,7 +1490,7 @@ static void do_setup(int argc, char *argv[])
 		tst_brk(TCONF, "Not supported in 32-bit compat mode");
 
 	if (tst_test->needs_abi_bits && !tst_abi_bits(tst_test->needs_abi_bits))
-		tst_brk(TCONF, "%dbit ABI is not supported", tst_test->needs_abi_bits);
+		tst_brk(TCONF, "Test needs %dbit ABI", tst_test->needs_abi_bits);
 
 	if (tst_test->needs_cmds) {
 		struct tst_cmd *pcmd = tst_test->needs_cmds;
@@ -1484,6 +1500,9 @@ static void do_setup(int argc, char *argv[])
 			pcmd++;
 		}
 	}
+
+	if (tst_test->iterations == 0)
+		tst_test->iterations = 1;
 
 	if (tst_test->mount_device)
 		tst_test->format_device = 1;
@@ -1771,7 +1790,7 @@ static void testrun(void)
 	for (;;) {
 		cont = 0;
 
-		if (i < (unsigned int)iterations) {
+		if (i < tst_test->iterations) {
 			i++;
 			cont = 1;
 		}

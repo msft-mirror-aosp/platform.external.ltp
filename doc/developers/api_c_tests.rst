@@ -29,8 +29,13 @@ Commands
 
 Core LTP API
 ------------
+.. kernel-doc:: ../../include/tst_common.h
 .. kernel-doc:: ../../include/tst_res_flags.h
 .. kernel-doc:: ../../include/tst_test.h
+
+CPU
+---
+.. kernel-doc:: ../../include/tst_cpu.h
 
 Crypto
 ------
@@ -97,6 +102,11 @@ Saving and restoring /proc|sys values
 Swap
 ----
 .. kernel-doc:: ../../include/tse_swap.h
+
+Sysfs
+-----
+
+.. kernel-doc:: ../../include/tst_sysfs_assert.h
 
 Temporary directory
 -------------------
