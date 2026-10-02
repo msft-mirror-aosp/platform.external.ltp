@@ -327,8 +327,14 @@
 /* Define to 1 if you have the <rpc/rpc.h> header file. */
 /* #undef HAVE_RPC_RPC_H 1 */
 
+/* Define to 1 if you have the `sched_getattr' function. */
+#define HAVE_SCHED_GETATTR 1
+
 /* Define to 1 if you have the `sched_getcpu' function. */
 #define HAVE_SCHED_GETCPU 1
+
+/* Define to 1 if you have the `sched_setattr' function. */
+#define HAVE_SCHED_SETATTR 1
 
 /* Define to 1 if you have the `setns` function. */
 #define HAVE_SETNS 1
@@ -413,6 +419,18 @@
 /* Define to 1 if the system has the type `struct ipc64_perm'. */
 #define HAVE_STRUCT_IPC64_PERM
 
+/* Define to 1 if the system has the type `struct keyctl_dh_params'. */
+#define HAVE_STRUCT_KEYCTL_DH_PARAMS 1
+
+/* Define to 1 if the system has the type `struct keyctl_kdf_params'. */
+#define HAVE_STRUCT_KEYCTL_KDF_PARAMS 1
+
+/* Define to 1 if the system has the type `struct keyctl_pkey_params'. */
+#define HAVE_STRUCT_KEYCTL_PKEY_PARAMS 1
+
+/* Define to 1 if the system has the type `struct keyctl_pkey_query'. */
+#define HAVE_STRUCT_KEYCTL_PKEY_QUERY 1
+
 /* Define to 1 if you have the type `struct loop_config'. */
 #define HAVE_STRUCT_LOOP_CONFIG 1
 
@@ -431,6 +449,9 @@
 /* Define to 1 if `aux_head' is a member of `struct perf_event_mmap_page'. */
 #define HAVE_STRUCT_PERF_EVENT_MMAP_PAGE_AUX_HEAD 1
 
+/* Define to 1 if the system has the type `struct prctl_mm_map'. */
+#define HAVE_STRUCT_PRCTL_MM_MAP 1
+
 /* Define to 1 if the system has the type `struct ptrace_peeksiginfo_args'. */
 #define HAVE_STRUCT_PTRACE_PEEKSIGINFO_ARGS 1
 
@@ -439,6 +460,9 @@
 
 /* Define to 1 if the system has the type `struct rlimit64'. */
 #define HAVE_STRUCT_RLIMIT64 1
+
+/* Define to 1 if the system has the type `struct sched_attr'. */
+#define HAVE_STRUCT_SCHED_ATTR 1
 
 /* Define to 1 if the system has the type `struct semid64_ds'. */
 #define HAVE_STRUCT_SEMID64_DS 1
