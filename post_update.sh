@@ -64,8 +64,18 @@ echo "Generating test comparison summary and updating commit message..."
 
 cd "$NEW_PATH"
 
-# Extract version from METADATA
-NEW_VER=$(grep -E '^[[:space:]]*version:' METADATA 2>/dev/null | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+# Extract a field of the git identifier from METADATA
+metadata_field() {
+  grep -E "^[[:space:]]*$1:" METADATA 2>/dev/null | head -n1 | sed -E 's/.*"([^"]+)".*/\1/'
+}
+
+# Extract version from METADATA. For a tag (stable release) update,
+# external_updater records the commit SHA in "version" and the tag in
+# "closest_version", so prefer "closest_version" when it is present.
+NEW_VER=$(metadata_field closest_version)
+if [ -z "$NEW_VER" ]; then
+  NEW_VER=$(metadata_field version)
+fi
 if [ -z "$NEW_VER" ]; then
   NEW_VER=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 fi
@@ -107,6 +117,9 @@ fi
 ORIG_MSG=$(git log -1 --format=%B 2>/dev/null || true)
 BUG_LINE=$(echo "$ORIG_MSG" | grep -E '^Bug:' | head -n1 || echo "Bug: None")
 TEST_LINE=$(echo "$ORIG_MSG" | grep -E '^Test:' | head -n1 || echo "Test: TreeHugger")
+# external_updater adds UPSTREAM_REV_ID, which Copybara/CaaS uses to find the
+# starting point of the next update.
+REV_ID_LINE=$(echo "$ORIG_MSG" | grep -E '^UPSTREAM_REV_ID:' | head -n1 || true)
 CHANGE_ID=$(echo "$ORIG_MSG" | grep -E '^Change-Id:' | head -n1 || true)
 if [ -z "$CHANGE_ID" ]; then
   CHANGE_ID="Change-Id: I$(python3 -c 'import secrets; print(secrets.token_hex(20))')"
@@ -133,10 +146,13 @@ if [ -n "$TEST_DIFF" ]; then
 fi
 
 echo "" >> "$NEW_COMMIT_FILE"
+if [ -n "$REV_ID_LINE" ]; then
+  echo "$REV_ID_LINE" >> "$NEW_COMMIT_FILE"
+fi
 echo "$BUG_LINE" >> "$NEW_COMMIT_FILE"
 echo "$TEST_LINE" >> "$NEW_COMMIT_FILE"
-echo "$CHANGE_ID" >> "$NEW_COMMIT_FILE"
 echo "$SIGNED_OFF" >> "$NEW_COMMIT_FILE"
+echo "$CHANGE_ID" >> "$NEW_COMMIT_FILE"
 
 # Stage updated files before amending the commit
 git add "$NEW_PATH/VERSION" "$NEW_PATH/gen.bp" "$NEW_PATH/android/include/config.h" 2>/dev/null || true
