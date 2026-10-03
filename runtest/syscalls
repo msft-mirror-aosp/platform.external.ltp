@@ -727,6 +727,27 @@ keyctl06 keyctl06
 keyctl07 keyctl07
 keyctl08 keyctl08
 keyctl09 keyctl09
+keyctl10 keyctl10
+keyctl11 keyctl11
+keyctl12 keyctl12
+keyctl13 keyctl13
+keyctl14 keyctl14
+keyctl15 keyctl15
+keyctl16 keyctl16
+keyctl17 keyctl17
+keyctl18 keyctl18
+keyctl19 keyctl19
+keyctl20 keyctl20
+keyctl21 keyctl21
+keyctl22 keyctl22
+keyctl23 keyctl23
+keyctl24 keyctl24
+keyctl25 keyctl25
+keyctl26 keyctl26
+keyctl27 keyctl27
+keyctl28 keyctl28
+keyctl29 keyctl29
+keyctl30 keyctl30
 
 kcmp01 kcmp01
 kcmp02 kcmp02
@@ -890,6 +911,8 @@ mmap20 mmap20
 mmap21_01 mmap21 -m 1
 mmap21_02 mmap21
 mmap22 mmap22
+mmap23 mmap23
+mmap24 mmap24
 
 modify_ldt01 modify_ldt01
 modify_ldt02 modify_ldt02
@@ -1337,6 +1360,7 @@ sched_setaffinity01 sched_setaffinity01
 sched_getaffinity01 sched_getaffinity01
 
 sched_setattr01 sched_setattr01
+sched_setattr02 sched_setattr02
 sched_getattr01 sched_getattr01
 sched_getattr02 sched_getattr02
 
@@ -1676,6 +1700,7 @@ swapoff02 swapoff02
 swapon01 swapon01
 swapon02 swapon02
 swapon03 swapon03
+swapon04 swapon04
 
 #Exclusive syscall() for POWER6 machines only
 switch01 endian_switch01

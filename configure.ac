@@ -56,7 +56,6 @@ AC_CHECK_HEADERS_ONCE([ \
     cpuid.h \
     emmintrin.h \
     ifaddrs.h \
-    keyutils.h \
     linux/blkdev.h \
     linux/can.h \
     linux/cgroupstats.h \
@@ -155,7 +154,9 @@ AC_CHECK_FUNCS_ONCE([ \
     rand_r \
     recvmmsg \
     renameat2 \
+    sched_getattr \
     sched_getcpu \
+    sched_setattr \
     sendmmsg \
     sethostid \
     setns \
@@ -199,6 +200,7 @@ AC_CHECK_DECLS([TCA_PEDIT_PARMS_EX, TCA_PEDIT_KEYS_EX, TCA_PEDIT_KEY_EX,
 AC_CHECK_TYPES([struct acct_v3],,,[#include <sys/acct.h>])
 AC_CHECK_TYPES([struct af_alg_iv, struct sockaddr_alg],,,[# include <linux/if_alg.h>])
 AC_CHECK_TYPES([struct clone_args],,,[#include <sched.h>])
+AC_CHECK_TYPES([struct sched_attr],,,[#include <sched.h>])
 AC_CHECK_TYPES([struct fanotify_event_info_fid, struct fanotify_event_info_error,
 		struct fanotify_event_info_header, struct fanotify_event_info_pidfd,
 		struct fanotify_event_info_range],,,[#include <sys/fanotify.h>])
@@ -286,6 +288,8 @@ AC_CHECK_TYPES([struct fsxattr],,,[#include <linux/fs.h>])
 
 AC_CHECK_TYPES([struct logical_block_metadata_cap],,,[#include <linux/fs.h>])
 
+AC_CHECK_TYPES([struct prctl_mm_map],,,[#include <sys/prctl.h>])
+
 AC_CHECK_TYPES([struct sockaddr_vm],,,[
 #include <sys/socket.h>
 #include <linux/vm_sockets.h>
@@ -294,6 +298,10 @@ AC_CHECK_TYPES([struct sockaddr_vm],,,[
 AC_CHECK_TYPES([struct uffdio_move],,,[#include <linux/userfaultfd.h>])
 AC_CHECK_TYPES([struct uffdio_poison],,,[#include <linux/userfaultfd.h>])
 AC_CHECK_TYPES([struct uffdio_writeprotect],,,[#include <linux/userfaultfd.h>])
+
+AC_CHECK_TYPES([struct keyctl_dh_params, struct keyctl_kdf_params,
+	struct keyctl_pkey_query, struct keyctl_pkey_params],,,
+	[#include <linux/keyctl.h>])
 
 # Tools knobs
 
@@ -417,7 +425,6 @@ LTP_CHECK_CLEAR_CACHE
 LTP_CHECK_CRYPTO
 LTP_CHECK_FORTIFY_SOURCE
 LTP_CHECK_KERNEL_DEVEL
-LTP_CHECK_KEYUTILS_SUPPORT
 LTP_CHECK_LIBMNL
 LTP_CHECK_SELINUX
 LTP_CHECK_SYNC_ADD_AND_FETCH
@@ -473,7 +480,6 @@ open posix testsuite: ${with_open_posix_testsuite:-no}
 TI-RPC testsuite: ${with_tirpc:-yes}
 
 LIBRARIES
-keyutils: ${have_keyutils:-yes}
 libacl: ${have_libacl:-no}
 libaio: ${have_libaio:-no} (aio: ${have_aio:-no})
 libcap: $cap_libs (newer: ${has_newer_libcap:-no})

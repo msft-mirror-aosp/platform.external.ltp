@@ -21,6 +21,21 @@ ltp_repo = 'https://github.com/linux-test-project/ltp'
 ltp_repo_base_url = f"{ltp_repo}/tree/master"
 cve_url = "https://www.cve.org/CVERecord?id="
 
+def _get_min_kernel_version():
+    header_path = os.path.join(os.path.dirname(__file__), '../include/tst_kvercmp.h')
+    with open(header_path, 'r', encoding='utf-8') as f:
+        match = re.search(r'#define\s+TST_MIN_KVER\s+"([^"]+)"', f.read())
+        if match:
+            return match.group(1)
+    raise RuntimeError(f"Could not find TST_MIN_KVER in {header_path}")
+
+min_kernel_version = _get_min_kernel_version()
+
+rst_prolog = f"""
+.. |min_kernel_version| replace:: **{min_kernel_version}**
+.. |min_kernel_version_plain| replace:: {min_kernel_version}
+"""
+
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
@@ -89,7 +104,7 @@ def generate_supported_syscalls(_):
         'file_getattr': f'{ltp_syscalls_path}/file_attr',
         'file_setattr': f'{ltp_syscalls_path}/file_attr',
         'futex': f'{ltp_syscalls_path}/futex',
-        'getdents64': f'{ltp_syscalls_path}/gettdents',
+        'getdents64': f'{ltp_syscalls_path}/getdents',
         'inotify_add_watch': f'{ltp_syscalls_path}/inotify',
         'inotify_init': f'{ltp_syscalls_path}/inotify',
         'inotify_rm_watch': f'{ltp_syscalls_path}/inotify',
@@ -293,7 +308,7 @@ def _generate_tags_table(tags):
         "linux-git": "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=",
         "linux-stable-git": "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/commit/?id=",
         "glibc-git": "https://sourceware.org/git/?p=glibc.git;a=commit;h=",
-        "musl-git": "https://git.musl-libc.org/cgit/musl/commit/src/linux/clone.c?id=",
+        "musl-git": "https://git.musl-libc.org/cgit/musl/commit/?id=",
         "CVE": cve_url + 'CVE-',
     }
 
