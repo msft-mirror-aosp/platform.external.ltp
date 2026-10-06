@@ -16,6 +16,8 @@
 #include "lapi/syscalls.h"
 #include "libswap.h"
 
+#define MNTPOINT "mntpoint"
+
 static void verify_swapon(void)
 {
 	TEST(tst_syscall(__NR_swapon, "./swapfile01", 0));
@@ -35,12 +37,16 @@ static void verify_swapon(void)
 
 static void setup(void)
 {
+	SAFE_CHDIR(MNTPOINT);
 	is_swap_supported("./tstswap");
 	make_swapfile("swapfile01", 0);
 }
 
 static struct tst_test test = {
+	.needs_root = 1,
 	.needs_tmpdir = 1,
+	.mount_device = 1,
+	.mntpoint = MNTPOINT,
 	.test_all = verify_swapon,
 	.setup = setup
 };
