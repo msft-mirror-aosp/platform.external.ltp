@@ -22,6 +22,8 @@
 #include "swaponoff.h"
 #include "libswap.h"
 
+#define MNTPOINT "mntpoint"
+
 static int setup_swap(void);
 static int clean_swap(void);
 static int check_and_swapoff(const char *filename);
@@ -256,6 +258,7 @@ static void setup(void)
 	if (access("/proc/swaps", F_OK))
 		tst_brk(TCONF, "swap not supported by kernel");
 
+	SAFE_CHDIR(MNTPOINT);
 	is_swap_supported("./tstswap");
 }
 
@@ -267,6 +270,8 @@ static void cleanup(void)
 static struct tst_test test = {
 	.needs_root = 1,
 	.needs_tmpdir = 1,
+	.mount_device = 1,
+	.mntpoint = MNTPOINT,
 	.forks_child = 1,
 	.test_all = verify_swapon,
 	.setup = setup,

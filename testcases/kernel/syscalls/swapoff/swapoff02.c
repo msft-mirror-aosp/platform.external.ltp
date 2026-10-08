@@ -18,6 +18,8 @@
 #include "lapi/syscalls.h"
 #include "libswap.h"
 
+#define MNTPOINT "mntpoint"
+
 static int setup01(void);
 static void cleanup01(void);
 
@@ -79,6 +81,8 @@ static void setup(void)
 {
 	struct passwd *nobody;
 
+	SAFE_CHDIR(MNTPOINT);
+
 	nobody = SAFE_GETPWNAM("nobody");
 	nobody_uid = nobody->pw_uid;
 
@@ -94,6 +98,8 @@ static void setup(void)
 static struct tst_test test = {
 	.needs_root = 1,
 	.needs_tmpdir = 1,
+	.mount_device = 1,
+	.mntpoint = MNTPOINT,
 	.test = verify_swapoff,
 	.tcnt = ARRAY_SIZE(tcases),
 	.setup = setup
