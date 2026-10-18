@@ -328,13 +328,15 @@
 /* #undef HAVE_RPC_RPC_H 1 */
 
 /* Define to 1 if you have the `sched_getattr' function. */
-#define HAVE_SCHED_GETATTR 1
+/* Bionic only provides it since API 37, see sched.h in this directory. */
+/* #undef HAVE_SCHED_GETATTR */
 
 /* Define to 1 if you have the `sched_getcpu' function. */
 #define HAVE_SCHED_GETCPU 1
 
 /* Define to 1 if you have the `sched_setattr' function. */
-#define HAVE_SCHED_SETATTR 1
+/* Bionic only provides it since API 37, see sched.h in this directory. */
+/* #undef HAVE_SCHED_SETATTR */
 
 /* Define to 1 if you have the `setns` function. */
 #define HAVE_SETNS 1
