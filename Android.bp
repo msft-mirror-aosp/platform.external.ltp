@@ -198,6 +198,11 @@ cc_defaults {
     defaults: ["ltp_defaults"],
     gtest: false,
     cflags: ["-Wno-gnu-variable-sized-type-not-at-end"],
+    extra_include_dir_deps: [
+        "testcases/misc/math/float/main.c",
+        "testcases/misc/math/float/thread_code.c",
+        "testcases/realtime/func/pi-tests/test-skeleton.c",
+    ],
     no_named_install_directory: true,
     relative_install_path: "vts_ltp_tests/testcases/bin",
 }
